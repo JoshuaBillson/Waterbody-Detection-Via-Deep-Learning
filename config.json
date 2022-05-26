@@ -1,0 +1,20 @@
+
+{
+  "generate_patches": false,
+  "show_data": false,
+  "show_samples": false,
+  "timestamp": 1,
+  "patch_size": 512,
+  "train": true,
+  "hyperparameters": {
+    "model": "transunet_rgb",
+    "backbone": null,
+    "alpha": 0.5,
+    "learning_rate": 0.001,
+    "optimizer": "adam",
+    "batch_size": 8,
+    "epochs": 10 }
+}
+
+
+

@@ -1,0 +1,112 @@
+{
+  "unet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "unet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "vnet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "vnet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "unet_plus_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "unet_plus_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "unet_3_plus_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "unet_3_plus_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "r2_unet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "r2_unet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "resunet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "resunet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "u2net_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "u2net_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "transunet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "transunet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "swin_unet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "swin_unet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "att_unet_rgb": {
+    "rgb": true,
+    "nir": false,
+    "swir": false
+  },
+  "att_unet_multi": {
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "deeplabv3":{
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  },
+  "sharpmask":{
+    "rgb": true,
+    "nir": true,
+    "swir": true
+  }
+}
