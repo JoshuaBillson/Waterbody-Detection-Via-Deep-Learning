@@ -1,16 +1,51 @@
 import tensorflow as tf
-from random import randint
-from tensorflow import keras
-from typing import Tuple, Sequence
+from typing import Sequence
 from keras.activations import swish
-from keras.models import Model
-import numpy as np
 from tensorflow import Tensor
 from keras.layers import Conv2D, Layer, Input, concatenate, Lambda, Reshape
 
 
+def rgb_input_layer(config):
+    """
+    Construct An Input Layer For RGB Bands
+    :param config: A dictionary storing the script configuration
+    :return: The input and output layers as the tuple (inputs, outputs)
+    """
+    return preprocessing_layer(config["patch_size"], is_rgb=True)
+
+
+def nir_input_layer(config):
+    """
+    Construct An Input Layer For The NIR Bands
+    :param config: A dictionary storing the script configuration
+    :return: The input and output layers as the tuple (inputs, outputs)
+    """
+    return preprocessing_layer(config["patch_size"], is_rgb=False)
+
+
+def swir_input_layer(config):
+    """
+    Construct An Input Layer For The SWIR Bands
+    :param config: A dictionary storing the script configuration
+    :return: The input and output layers as the tuple (inputs, outputs)
+    """
+    return preprocessing_layer(config["patch_size"] // 2, is_rgb=False)
+
+
+def rgb_nir_input_layer(config):
+    """
+    Construct An Input Layer For RGB + NIR Bands
+    :param config: A dictionary storing the script configuration
+    :return: The input and output layers as the tuple (inputs, outputs)
+    """
+    rgb_input, rgb_output = rgb_input_layer(config)
+    nir_input, nir_output = nir_input_layer(config)
+    concat = concatenate([rgb_output, nir_output], axis=3)
+    return [rgb_input, nir_input], concat
+
+
 @tf.function
-def channel_wise_norm(tensor):
+def channel_wise_norm(tensor: Tensor):
     num_channels = tf.shape(tensor)[-1]
     channels = tf.TensorArray(tf.float32, size=num_channels)
     for channel_idx in tf.range(num_channels):
@@ -23,7 +58,7 @@ def channel_wise_norm(tensor):
 def preprocessing_layer(patch_size, is_rgb=True):
     inputs = Input(shape=(patch_size, patch_size, 3 if is_rgb else 1))
     threshold_layer = Lambda(lambda x: tf.clip_by_value(x, 0, 3000))(inputs)
-    normalization_layer = Lambda(lambda x: channel_wise_norm(x))(inputs if is_rgb else threshold_layer)
+    normalization_layer = Lambda(channel_wise_norm)(inputs if is_rgb else threshold_layer)
     return inputs, normalization_layer
 
 

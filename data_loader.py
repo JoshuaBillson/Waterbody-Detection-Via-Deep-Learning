@@ -4,15 +4,13 @@ import math
 import shutil
 import rasterio
 import numpy as np
-import tensorflow as tf
-from random import randint
-from tensorflow import keras
 import matplotlib.pyplot as plt
 from typing import Tuple, Sequence
 from tensorflow.keras.utils import Sequence as KerasSequence
 
 
 class DataLoader:
+    """A class to generate patches, load the dataset from disk, and show statistics."""
     def __init__(self, tile_size: int = 1024, timestamp: int = 1):
         self.timestamp = timestamp
         self.tile_size = tile_size

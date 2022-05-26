@@ -8,6 +8,7 @@
   "train": true,
   "hyperparameters": {
     "model": "transunet_rgb",
+    "bands": ["RGB", "NIR", "SWIR"],
     "backbone": null,
     "alpha": 0.5,
     "learning_rate": 0.001,
