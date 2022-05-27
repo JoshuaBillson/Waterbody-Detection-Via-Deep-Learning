@@ -1,26 +1,22 @@
 import json
-from data_loader import DataLoader, create_patches, show_samples, load_dataset
-from models import get_model
 from models.losses import DiceBCELoss
-from keras.metrics import MeanIoU, Recall, Precision
-from keras.losses import BinaryCrossentropy
-from models.layers import preprocessing_layer
-from keras.layers import Input
-from keras.models import Model
-import numpy as np
+from tensorflow.keras.metrics import MeanIoU, Recall, Precision
+from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.layers import Input
+from tensorflow.keras.models import Model
 
+from data_loader import DataLoader, create_patches, show_samples, load_dataset
+from models.layers import preprocessing_layer
+from models import get_model
+from config import get_epochs, get_model_type, get_timestamp
 
 def main():
     # Get Project Configuration
     with open('config.json') as f:
         config = json.loads(f.read())
 
-    # Get Model Configuration
-    with open('models.json') as f:
-        model_config = json.loads(f.read())[config["hyperparameters"]["model"]]
-
     # Create Data Loader
-    loader = DataLoader(timestamp=config["timestamp"])
+    loader = DataLoader(timestamp=get_timestamp(config))
 
     # Generate Patches
     if config["generate_patches"]:
@@ -31,7 +27,7 @@ def main():
         show_samples(loader)
 
     # Load Dataset
-    train_data, val_data, test_data = load_dataset(loader, batch_size=config["hyperparameters"]["batch_size"], include_nir=model_config["nir"], include_swir=model_config["swir"])
+    train_data, val_data, test_data = load_dataset(loader, config)
     #x, y = train_data[0]
     #print(x.shape, y.shape)
     #print(x.dtype, y.dtype)
@@ -62,7 +58,7 @@ def main():
 
     # Train Model
     if config["train"]:
-        model.fit(train_data, epochs=config["hyperparameters"]["epochs"], verbose=1)
+        model.fit(train_data, epochs=get_epochs(config), verbose=1)
 
 
 if __name__ == '__main__':

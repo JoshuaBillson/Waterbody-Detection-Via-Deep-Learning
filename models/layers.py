@@ -1,11 +1,11 @@
 import tensorflow as tf
-from typing import Sequence
-from keras.activations import swish
+from typing import Sequence, Tuple, Dict, Any
+from tensorflow.keras.activations import swish
 from tensorflow import Tensor
-from keras.layers import Conv2D, Layer, Input, concatenate, Lambda, Reshape
+from tensorflow.keras.layers import Conv2D, Layer, Input, concatenate, Lambda, Reshape
 
 
-def rgb_input_layer(config):
+def rgb_input_layer(config: Dict[str, Any]):
     """
     Construct An Input Layer For RGB Bands
     :param config: A dictionary storing the script configuration
@@ -14,7 +14,7 @@ def rgb_input_layer(config):
     return preprocessing_layer(config["patch_size"], is_rgb=True)
 
 
-def nir_input_layer(config):
+def nir_input_layer(config: Dict[str, Any]):
     """
     Construct An Input Layer For The NIR Bands
     :param config: A dictionary storing the script configuration
@@ -23,7 +23,7 @@ def nir_input_layer(config):
     return preprocessing_layer(config["patch_size"], is_rgb=False)
 
 
-def swir_input_layer(config):
+def swir_input_layer(config: Dict[str, Any]):
     """
     Construct An Input Layer For The SWIR Bands
     :param config: A dictionary storing the script configuration
@@ -32,7 +32,7 @@ def swir_input_layer(config):
     return preprocessing_layer(config["patch_size"] // 2, is_rgb=False)
 
 
-def rgb_nir_input_layer(config):
+def rgb_nir_input_layer(config: Dict[str, Any]):
     """
     Construct An Input Layer For RGB + NIR Bands
     :param config: A dictionary storing the script configuration
@@ -45,17 +45,27 @@ def rgb_nir_input_layer(config):
 
 
 @tf.function
-def channel_wise_norm(tensor: Tensor):
-    num_channels = tf.shape(tensor)[-1]
+def channel_wise_norm(tensor: Tensor) -> Tensor:
+    """
+    Normalize the intensity of each channel of the input tensor
+    :param tensor: The input tensor to be normalized
+    :return: The normalized tensor
+    """
+    num_channels = tensor.shape[-1]
     channels = tf.TensorArray(tf.float32, size=num_channels)
-    for channel_idx in tf.range(num_channels):
+    for channel_idx in range(num_channels):
         channel = (tensor[..., channel_idx] - tf.reduce_mean(tensor[..., channel_idx])) / tf.math.reduce_std(tensor[..., channel_idx])
         channels = channels.write(channel_idx, channel)
     new_tensor = tf.transpose(channels.stack(), perm=[1, 2, 3, 0])
     return tf.ensure_shape(new_tensor, tensor.shape)
 
 
-def preprocessing_layer(patch_size, is_rgb=True):
+def preprocessing_layer(patch_size: int, is_rgb: bool = True) -> Tuple[Layer, Layer]:
+    """
+    Normalize the intensity of each channel of the input tensor
+    :param tensor: The input tensor to be normalized
+    :return: The normalized tensor
+    """
     inputs = Input(shape=(patch_size, patch_size, 3 if is_rgb else 1))
     threshold_layer = Lambda(lambda x: tf.clip_by_value(x, 0, 3000))(inputs)
     normalization_layer = Lambda(channel_wise_norm)(inputs if is_rgb else threshold_layer)

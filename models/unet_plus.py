@@ -1,22 +1,22 @@
-from models.utils import rgb_model
 from keras_unet_collection.models import unet_plus_2d
+from models.utils import assemble_model
+from config import get_model_config
 
 
-def unet_plus_rgb(config):
+def unet_plus(config):
     """
-        Summary:
-            Create VNET from keras unet collection library model object
-        Arguments:
-            Model configuration from config.yaml
-        Return:
-            Keras.model object
+    Construct a U-Net++ model that takes the input bands and uses the backbone specified in the config
+    :param config: The model configuration
+    :return: The assembled U-Net++ model
     """
-    model = unet_plus_2d((config['patch_size'], config['patch_size'], 3), [64, 128, 256, 512],
+    # Get Backbone And Input Channels
+    input_channels, backbone = get_model_config(config)
+
+    # Construct Base Model
+    model = unet_plus_2d((config['patch_size'], config['patch_size'], input_channels), [64, 128, 256, 512],
                          n_labels=1, stack_num_down=2, stack_num_up=1, activation='ReLU', output_activation='Sigmoid',
-                         batch_norm=True, pool='max', unpool='nearest', name='r2unet', backbone="ResNet152")
+                         batch_norm=True, pool='max', unpool='nearest', name='r2unet', backbone=backbone)
     model.summary()
-    return rgb_model(model, config)
 
-
-def unet_plus_multispectral(config):
-    pass
+    # Replace Input And Output Layers
+    return assemble_model(model, config)

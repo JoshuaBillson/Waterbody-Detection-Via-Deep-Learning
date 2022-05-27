@@ -1,11 +1,11 @@
 import os
-import cv2
 import math
 import shutil
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple, Sequence
+from cv2 import normalize, NORM_MINMAX, CV_8U, LUT
 from tensorflow.keras.utils import Sequence as KerasSequence
 
 
@@ -62,7 +62,7 @@ class DataLoader:
         # Show RGB Image
         if show_image:
             rgb_img = img[..., 0:3]
-            img_scaled = cv2.normalize(rgb_img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            img_scaled = normalize(rgb_img, None, 0, 255, NORM_MINMAX, dtype=CV_8U)
             img_scaled = DataLoader.adjust_gamma(img_scaled, 0.2)
             plt.imshow(img_scaled)
             plt.savefig(f"images/rgb.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
@@ -119,7 +119,7 @@ class DataLoader:
         # Plot Samples
         for rgb_sample, nir_sample, swir_sample, mask_sample, ax in zip(rgb_samples, nir_samples, swir_samples, mask_samples, axs):
             ax[0].imshow(mask_sample)
-            ax[1].imshow(DataLoader.adjust_gamma(cv2.normalize(rgb_sample, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U), 0.4))
+            ax[1].imshow(DataLoader.adjust_gamma(normalize(rgb_sample, None, 0, 255, NORM_MINMAX, dtype=CV_8U), 0.4))
             ax[2].imshow(DataLoader.threshold_channel(nir_sample))
             ax[3].imshow(DataLoader.threshold_channel(swir_sample))
 
@@ -131,7 +131,7 @@ class DataLoader:
     def adjust_gamma(image: np.ndarray, gamma: float = 1.0):
         invGamma = 1 / gamma
         table = np.array([((i / 255.0) * invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
-        return cv2.LUT(image, table)
+        return LUT(image, table)
 
     @staticmethod
     def threshold_channel(channel, threshold=3000):
@@ -199,11 +199,10 @@ class DataLoader:
 
 
 class ImgSequence(KerasSequence):
-    def __init__(self, data_loader: DataLoader, lower_bound: int, upper_bound: int, batch_size: int = 32, include_nir: bool = False, include_swir: bool = False):
+    def __init__(self, data_loader: DataLoader, lower_bound: int, upper_bound: int, batch_size: int = 32, bands: Sequence[str] = None):
         self.data_loader = data_loader
         self.batch_size = batch_size
-        self.include_nir = include_nir
-        self.include_swir = include_swir
+        self.bands = ["RGB"] if bands is None else bands
         self.indices = np.array(range(lower_bound, upper_bound + 1))
         np.random.shuffle(self.indices)
 
@@ -216,26 +215,33 @@ class ImgSequence(KerasSequence):
         batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
         for b in batch:
 
-            # Get RGB Features And Mask
-            rgb_batch.append(self.data_loader.get_rgb_features(b))
+            # Get Mask
             mask_batch.append(self.data_loader.get_mask(b))
 
+            # Get RGB Features
+            if "RGB" in self.bands:
+                rgb_batch.append(self.data_loader.get_rgb_features(b))
+
             # Get NIR Features
-            if self.include_nir:
+            if "NIR" in self.bands:
                 nir_batch.append(self.data_loader.get_nir_features(b))
 
             # Get SWIR Features
-            if self.include_swir:
+            if "SWIR" in self.bands:
                 swir_batch.append(self.data_loader.get_swir_features(b))
 
         # Return Batch
-        if self.include_nir and self.include_swir:
+        if all([band in self.bands for band in ["RGB", "NIR", "SWIR"]]):
             return [np.array(x).astype("float32") for x in [rgb_batch, nir_batch, swir_batch]], np.array(mask_batch).astype("float32")
-        elif self.include_nir:
+        elif all([band in self.bands for band in ["RGB", "NIR"]]):
             return [np.array(x).astype("float32") for x in [rgb_batch, nir_batch]], np.array(mask_batch).astype("float32")
-        elif self.include_swir:
+        elif all([band in self.bands for band in ["RGB", "SWIR"]]):
             return [np.array(x).astype("float32") for x in [rgb_batch, swir_batch]], np.array(mask_batch).astype("float32")
-        return np.array(rgb_batch).astype("float32"), np.array(mask_batch).astype("float32")
+        elif "RGB" in self.bands:
+            return np.array(rgb_batch).astype("float32"), np.array(mask_batch).astype("float32")
+        elif "NIR" in self.bands:
+            return np.array(nir_batch).astype("float32"), np.array(mask_batch).astype("float32")
+        return np.array(swir_batch).astype("float32"), np.array(mask_batch).astype("float32")
 
 
 def create_patches(loader: DataLoader, show_image: bool = False) -> None:
@@ -256,10 +262,12 @@ def show_samples(loader: DataLoader) -> None:
     loader.plot_samples(rgb_samples, nir_samples, swir_samples, mask_samples)
 
 
-def load_dataset(loader: DataLoader, include_nir: bool = False, include_swir: bool = False, batch_size: int = 32) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
+def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
+    bands = config["hyperparameters"]["bands"]
+    batch_size = config["hyperparameters"]["batch_size"]
     lower_bound, upper_bound = loader.get_bounds()
     assert lower_bound == 1 and upper_bound == 3600, f"Error: Bounds Must Be Between 1 and 3600 (Got [{lower_bound}, {upper_bound}])"
-    train_data = ImgSequence(loader, 1, 2700, include_swir=include_swir, include_nir=include_nir, batch_size=batch_size)
-    val_data = ImgSequence(loader, 2701, 3000, include_swir=include_swir, include_nir=include_nir, batch_size=batch_size)
-    test_data = ImgSequence(loader, 3001, 3600, include_swir=include_swir, include_nir=include_nir, batch_size=batch_size)
+    train_data = ImgSequence(loader, 1, 2700, bands=bands, batch_size=batch_size)
+    val_data = ImgSequence(loader, 2701, 3000, bands=bands, batch_size=batch_size)
+    test_data = ImgSequence(loader, 3001, 3600, bands=bands, batch_size=batch_size)
     return train_data, val_data, test_data

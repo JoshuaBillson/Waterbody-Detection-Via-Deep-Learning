@@ -1,22 +1,22 @@
-from models.utils import rgb_model
 from keras_unet_collection.models import att_unet_2d
+from config import get_model_config
+from models.utils import assemble_model
 
 
-def att_unet_rgb(config):
+def att_unet(config):
     """
-        Summary:
-            Create VNET from keras unet collection library model object
-        Arguments:
-            Model configuration from config.yaml
-        Return:
-            Keras.model object
+    Construct an Attention U-Net model that takes the input bands and uses the backbone specified in the config
+    :param config: The model configuration
+    :return: The assembled Attention U-Net model
     """
-    model = att_unet_2d((config['patch_size'], config['patch_size'], 3), [64, 128, 256, 512], n_labels=2, stack_num_down=2,
+    # Get Backbone And Input Channels
+    input_channels, backbone = get_model_config(config)
+
+    # Construct Base Model
+    model = att_unet_2d((config['patch_size'], config['patch_size'], input_channels), [64, 128, 256, 512], n_labels=2, stack_num_down=2,
                         stack_num_up=2, activation='ReLU', atten_activation='ReLU', attention='add', output_activation="Sigmoid",
-                        batch_norm=True, pool=False, unpool='bilinear', name='attunet', backbone="ResNet152")
+                        batch_norm=True, pool=False, unpool='bilinear', name='attunet', backbone=backbone)
     model.summary()
-    return rgb_model(model, config)
 
-
-def att_unet_multispectral(config):
-    pass
+    # Replace Input And Output Layers
+    return assemble_model(model, config)

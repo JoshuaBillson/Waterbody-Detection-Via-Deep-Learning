@@ -1,5 +1,5 @@
-from keras.backend import flatten, sum, dot
-from keras.losses import binary_crossentropy
+from tensorflow.keras.backend import flatten, sum, dot
+from tensorflow.keras.losses import binary_crossentropy
 
 
 def DiceBCELoss(targets, inputs, smooth=1e-6, alpha=0.5):
