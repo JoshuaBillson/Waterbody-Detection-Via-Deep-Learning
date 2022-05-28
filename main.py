@@ -40,6 +40,10 @@ def main():
     #print(x.dtype, y.dtype)
     print(len(train_data))
 
+    # Get Callbacks
+    create_callback_dirs()
+    callbacks = get_callbacks(config)
+
     # Create Model
     '''
     inputs = Input(shape=(512, 512, 3))
@@ -63,13 +67,18 @@ def main():
     model.summary()
     model.compile(loss=DiceBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MeanIoU(num_classes=2), Precision(), Recall()])
 
-    # Get Callbacks
-    create_callback_dirs(config)
-    callbacks = get_callbacks(config)
+    # If Model Is Loaded From Checkpoint, Find The Last Epoch
+    initial_epoch = 0
+    if get_model_type(config) in os.listdir("checkpoints"):
+        with open(f"logs/csv/{get_model_type(config)}.csv") as csvfile:
+            last_line = csvfile.readlines()[-1]
+            initial_epoch = int(last_line.split(",")[0]) + 1
+
 
     # Train Model
+    print(f"EPOCH: {initial_epoch}")
     if config["train"]:
-        model.fit(train_data, epochs=get_epochs(config), verbose=1, callbacks=callbacks, validation_data=val_data)
+        model.fit(train_data, epochs=get_epochs(config)+initial_epoch, verbose=1, callbacks=callbacks, validation_data=val_data, initial_epoch=initial_epoch)
 
 
 if __name__ == '__main__':

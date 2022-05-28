@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any
 from tensorflow.keras.models import Model
 from models.unet import unet
@@ -31,6 +32,10 @@ def get_model(config: Dict[str, Any]) -> Model:
               "swin_unet": swin_unet,
               "att_unet": att_unet,
               }
-    if model in models:
+    if model in os.listdir("checkpoints"):
+        base_model: Model = models[model.split(".")[0]](config)
+        base_model.load_weights(f"checkpoints/{model}/variables/variables")
+        return base_model
+    elif model in models:
         return models[model](config)
     raise ValueError(f"Error: Invalid Model Received (Must Be One Of {list(models.keys())})!")

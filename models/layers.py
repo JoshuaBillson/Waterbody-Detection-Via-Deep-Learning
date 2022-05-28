@@ -67,8 +67,9 @@ def preprocessing_layer(patch_size: int, is_rgb: bool = True) -> Tuple[Layer, La
     :return: The normalized tensor
     """
     inputs = Input(shape=(patch_size, patch_size, 3 if is_rgb else 1))
-    threshold_layer = Lambda(lambda x: tf.clip_by_value(x, 0, 3000))(inputs)
-    normalization_layer = Lambda(channel_wise_norm)(inputs if is_rgb else threshold_layer)
+    #threshold_layer = Lambda(lambda x: tf.clip_by_value(x, 0, 3000))(inputs)
+    #normalization_layer = Lambda(channel_wise_norm)(inputs if is_rgb else threshold_layer)
+    normalization_layer = Lambda(channel_wise_norm)(inputs)
     return inputs, normalization_layer
 
 

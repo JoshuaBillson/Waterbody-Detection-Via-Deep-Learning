@@ -107,4 +107,9 @@ def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
 
 
 def get_model_name(config: Dict[str, Any]) -> str:
-    return f"{get_model_type(config)}.{'+'.join(get_bands(config))}.{get_backbone(config)}.{int(time.time())}".lower()
+    """
+    Construct a name for the configured model of the format {model_type}.{bands}.{time}
+    :param config: The model configuration
+    :return: The formatted name of the configured model
+    """
+    return f"{get_model_type(config)}.{'+'.join(get_bands(config))}.{get_backbone(config)}.{int(time.time())}".lower() if "." not in get_model_type(config) else get_model_type(config)
