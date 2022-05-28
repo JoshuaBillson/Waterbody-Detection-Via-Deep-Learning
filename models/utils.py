@@ -1,8 +1,9 @@
+import time
 from typing import Dict, Any
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose
 from tensorflow.keras.models import Model
 from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer
-from config import get_model_type, get_bands
+from config import get_model_type, get_bands, get_backbone
 
 
 def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -37,7 +38,7 @@ def rgb_model(base_model: Model, config: Dict[str, Any]) -> Model:
     # Replace Model Input
     inputs, out = rgb_input_layer(config)
     outputs = model(out)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_type(config))
+    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
 def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -53,7 +54,7 @@ def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     # Replace Model Input
     inputs, out = nir_input_layer(config)
     outputs = model(out)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_type(config))
+    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
 def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -69,7 +70,7 @@ def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     # Replace Model Input
     inputs, out = swir_input_layer(config)
     outputs = model(out)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_type(config))
+    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
 def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -85,7 +86,7 @@ def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     # Replace Model Input
     inputs, out = rgb_nir_input_layer(config)
     outputs = model(out)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_type(config))
+    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
 def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -103,3 +104,7 @@ def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
     x = base_model.layers[-3].output
     outputs = Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
     return Model(inputs=base_model.input, outputs=outputs, name=f"{get_model_type(config)}_base")
+
+
+def get_model_name(config: Dict[str, Any]) -> str:
+    return f"{get_model_type(config)}.{'+'.join(get_bands(config))}.{get_backbone(config)}.{int(time.time())}".lower()

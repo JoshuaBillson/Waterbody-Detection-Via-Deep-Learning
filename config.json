@@ -8,10 +8,10 @@
   "train": true,
   "hyperparameters": {
     "model": "unet",
-    "bands": ["RGB", "NIR", "SWIR"],
+    "bands": ["RGB"],
     "backbone": null,
     "alpha": 0.5,
-    "learning_rate": 0.001,
+    "learning_rate": 0.0001,
     "optimizer": "adam",
     "batch_size": 4,
     "epochs": 10 }

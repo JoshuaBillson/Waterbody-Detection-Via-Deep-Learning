@@ -1,3 +1,5 @@
+from typing import Dict, Any
+from tensorflow.keras.models import Model
 from models.unet import unet
 from models.vnet import vnet
 from models.unet_plus import unet_plus
@@ -11,7 +13,12 @@ from models.att_unet import att_unet
 from config import get_model_type
 
 
-def get_model(config):
+def get_model(config: Dict[str, Any]) -> Model:
+    """
+    Takes the project configuration and returns the desired model
+    :param config: A dictionary representing the project config which is typically loaded from an external file
+    :returns: The model we want to train
+    """
     model = get_model_type(config)
     models = {"unet": unet,
               "vnet": vnet,
