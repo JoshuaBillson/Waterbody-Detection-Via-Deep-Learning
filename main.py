@@ -12,7 +12,7 @@ from data_loader import DataLoader, create_patches, show_samples, load_dataset
 from models.layers import preprocessing_layer
 from models import get_model
 from config import get_epochs, get_model_type, get_timestamp, get_learning_rate
-from callbacks import get_callbacks
+from callbacks import get_callbacks, create_callback_dirs
 
 
 GPU = 5
@@ -63,9 +63,13 @@ def main():
     model.summary()
     model.compile(loss=DiceBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MeanIoU(num_classes=2), Precision(), Recall()])
 
+    # Get Callbacks
+    create_callback_dirs(config)
+    callbacks = get_callbacks(config)
+
     # Train Model
     if config["train"]:
-        model.fit(train_data, epochs=get_epochs(config), verbose=1, callbacks=get_callbacks(config), validation_data=val_data)
+        model.fit(train_data, epochs=get_epochs(config), verbose=1, callbacks=callbacks, validation_data=val_data)
 
 
 if __name__ == '__main__':
