@@ -35,9 +35,6 @@ def main():
 
     # Load Dataset
     train_data, val_data, test_data = load_dataset(loader, config)
-    #x, y = train_data[0]
-    #print(x.shape, y.shape)
-    #print(x.dtype, y.dtype)
     print(len(train_data))
 
     # Get Callbacks
@@ -45,24 +42,6 @@ def main():
     callbacks = get_callbacks(config)
 
     # Create Model
-    '''
-    inputs = Input(shape=(512, 512, 3))
-    outputs = preprocessing_layer(inputs)
-    #model = Model(inputs=inputs, outputs=outputs)
-    model = get_model(config)
-    model.summary()
-    #print(train_data[0])
-    x, y = train_data[0]
-    print(x.shape, y.shape)
-    p = model.predict(x)
-    print(np.sum(y))
-    print(DiceBCELoss(y, p))
-    print(DiceBCELoss(y, y))
-    #print(x, np.mean(x[0, :, :, 0]), np.std(x[0, :, :, 0]), np.mean(x[0, :, :, 1]), np.std(x[0, :, :, 1]), np.mean(x[0, :, :, 2]), np.std(x[0, :, :, 2]))
-    #print(p, np.mean(p[0, :, :, 0]), np.std(p[0, :, :, 0]))
-    #print(p[0, :, :, 0])
-    #print(np.max(train_data[0]), np.max(p))
-    '''
     model = get_model(config)
     model.summary()
     model.compile(loss=DiceBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MeanIoU(num_classes=2), Precision(), Recall()])

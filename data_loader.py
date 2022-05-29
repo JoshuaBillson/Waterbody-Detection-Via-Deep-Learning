@@ -22,7 +22,7 @@ class DataLoader:
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The RGB features of the matching patch,
         """
-        return self._read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/rgb/rgb.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/rgb/rgb.{patch_number}.tif")
 
     def get_nir_features(self, patch_number: int) -> np.ndarray:
         """
@@ -30,7 +30,7 @@ class DataLoader:
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The NIR features of the matching patch,
         """
-        return self._read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/nir/nir.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/nir/nir.{patch_number}.tif")
 
     def get_swir_features(self, patch_number: int) -> np.ndarray:
         """
@@ -38,7 +38,7 @@ class DataLoader:
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The SWIR features of the matching patch,
         """
-        return self._read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/swir/swir.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/swir/swir.{patch_number}.tif")
 
     def get_mask(self, patch_number: int) -> np.ndarray:
         """
@@ -46,7 +46,7 @@ class DataLoader:
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The mark of the matching patch.
         """
-        return self._read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/mask/mask.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/mask/mask.{patch_number}.tif")
 
     def get_bounds(self) -> Tuple[int, int]:
         """Returns the indices of the lowest and highest numbered patches respectively."""
@@ -56,8 +56,12 @@ class DataLoader:
         return min_patch, max_patch
 
     def create_rgb_and_nir_patches(self, show_image: bool = False) -> None:
+        """
+        Creates RGB and NIR patches from the original image and saves them to disk
+        :param show_imgage: If this parameter is set to True, we plot the original RGB and NIR image for visualization purposes
+        """
         # Read Image
-        img = self._read_image(f"data/{self.folders.get(self.timestamp, 1)}/rgb_nir/rgb_nir.tif")
+        img = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/rgb_nir/rgb_nir.tif")
 
         # Show RGB Image
         if show_image:
@@ -68,7 +72,7 @@ class DataLoader:
             plt.savefig(f"images/rgb.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
             plt.show()
 
-            plt.imshow(self.threshold_channel(img[..., 3:]))
+            plt.imshow(self._threshold_channel(img[..., 3:]))
             plt.savefig(f"images/nir.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
             plt.show()
 
@@ -80,12 +84,16 @@ class DataLoader:
         self._write_patches(rgb_patches, "rgb")
 
     def create_swir_patches(self, show_img: bool = False) -> None:
+        """
+        Creates SWIR patches from the original image and saves them to disk
+        :param show_img: If this parameter is set to True, we plot the original SWIR image for visualization purposes
+        """
         # Open File
-        img = self._read_image(f"data/{self.folders.get(self.timestamp, 1)}/swir/swir.tif")
+        img = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/swir/swir.tif")
 
         # Plot Image
         if show_img:
-            plt.imshow(self.threshold_channel(img))
+            plt.imshow(self._threshold_channel(img))
             plt.savefig(f"images/swir.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
             plt.show()
 
@@ -94,8 +102,12 @@ class DataLoader:
         self._write_patches(patches, "swir")
 
     def create_mask_patches(self, show_mask: bool = False) -> None:
+        """
+        Creates mask patches from the original mask and saves them to disk
+        :param show_mask: If this parameter is set to True, we plot the mask for visualization purposes
+        """
         # Open File
-        mask = self._read_image("data/label.tif")
+        mask = self.read_image("data/label.tif")
 
         # Plot Image
         if show_mask:
@@ -106,7 +118,33 @@ class DataLoader:
         patches = self._segment_image(np.clip(mask, 0, 1))
         self._write_patches(patches, "mask")
 
+    @staticmethod
+    def read_image(filename: str) -> np.ndarray:
+        """
+        Reads a raster image from disk and returns it
+        :param filename: The name of the file on disk that we want to read
+        :returns: The read image as a Numpy array
+        """
+        with rasterio.open(filename) as dataset:
+            # Read Channels
+            num_channels = dataset.count
+            channels = [dataset.read(i) for i in range(1, num_channels+1)]
+
+            # Reshape Channels
+            shape = (channels[0].shape[0], channels[0].shape[1], 1)
+            channels = [np.reshape(channel, shape) for channel in channels]
+
+            # Concat Channels If More Than One
+            return np.concatenate(channels, axis=2) if len(channels) > 1 else channels[0]
+
     def plot_samples(self, rgb_samples: Sequence[np.ndarray], nir_samples: Sequence[np.ndarray], swir_samples: Sequence[np.ndarray], mask_samples: Sequence[np.ndarray]) -> None:
+        """
+        Takes some sample patches and plots them
+        :param rgb_samples: The samples of RGB patches we want to plot
+        :param nir_samples: The samples of NIR patches we want to plot
+        :param swir_samples: The samples of SWIR patches we want to plot
+        :param mask_samples: The samples of mask patches we want to plot
+        """
         # Create Subplots
         num_samples = min(len(rgb_samples), len(nir_samples), len(swir_samples), len(mask_samples))
         fig, axs = plt.subplots(num_samples, 4)
@@ -120,8 +158,8 @@ class DataLoader:
         for rgb_sample, nir_sample, swir_sample, mask_sample, ax in zip(rgb_samples, nir_samples, swir_samples, mask_samples, axs):
             ax[0].imshow(mask_sample)
             ax[1].imshow(DataLoader.adjust_gamma(normalize(rgb_sample, None, 0, 255, NORM_MINMAX, dtype=CV_8U), 0.4))
-            ax[2].imshow(DataLoader.threshold_channel(nir_sample))
-            ax[3].imshow(DataLoader.threshold_channel(swir_sample))
+            ax[2].imshow(DataLoader._threshold_channel(nir_sample))
+            ax[3].imshow(DataLoader._threshold_channel(swir_sample))
 
         # Save Figure
         plt.savefig(f"images/samples.{self.timestamp}.png", dpi=2500, bbox_inches='tight')
@@ -129,44 +167,39 @@ class DataLoader:
 
     @staticmethod
     def adjust_gamma(image: np.ndarray, gamma: float = 1.0):
+        """
+        Perform gamma correction on the provided image
+        :param image: The image to which we want to apply gamme correction
+        :param gamma: The ammount of gamma correction to apply
+        :returns: The gamma corrected image
+        """
         invGamma = 1 / gamma
         table = np.array([((i / 255.0) * invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
         return LUT(image, table)
 
     @staticmethod
-    def threshold_channel(channel, threshold=3000):
+    def _threshold_channel(channel, threshold=3000):
         return np.clip(channel, 0, threshold)
 
     def _write_patches(self, patches, image_type):
+        # Create Patches Directory
         timestamp_directory = f"data/{self.folders.get(self.timestamp, 1)}"
         if "patches" not in os.listdir(timestamp_directory):
             os.mkdir(f"{timestamp_directory}/patches")
 
+        # Create Directory For Patches Of The Appropriate Type (RGB, NIR, SWIR, Mask)
         patches_directory = f"{timestamp_directory}/patches"
         img_directory = f"{patches_directory}/{image_type}"
         if image_type in os.listdir(patches_directory):
             shutil.rmtree(img_directory)
         os.mkdir(img_directory)
 
+        # Save Patches To Disk
         height, width, count, dtype = patches[0].shape[0], patches[0].shape[1], patches[0].shape[2], patches[0].dtype
         for patch_number, patch in enumerate(patches):
             filename = f"{img_directory}/{image_type}.{patch_number + 1}.tif"
             with rasterio.open(filename, 'w', driver='GTiff', height=height, width=width, count=count, dtype=dtype) as dst:
                 dst.write(np.moveaxis(patch, -1, 0))
-
-    @staticmethod
-    def _read_image(filename):
-        with rasterio.open(filename) as dataset:
-            # Read Channels
-            num_channels = dataset.count
-            channels = [dataset.read(i) for i in range(1, num_channels+1)]
-
-            # Reshape Channels
-            shape = (channels[0].shape[0], channels[0].shape[1], 1)
-            channels = [np.reshape(channel, shape) for channel in channels]
-
-            # Concat Channels If More Than One
-            return np.concatenate(channels, axis=2) if len(channels) > 1 else channels[0]
 
     def _segment_image(self, img, is_swir=False):
         # Compute Dimentions
@@ -245,12 +278,36 @@ class ImgSequence(KerasSequence):
 
 
 def create_patches(loader: DataLoader, show_image: bool = False) -> None:
+    """
+    Generate the patches and save them to disk.
+    :param loader: The DataLoader that will be used to read the patches from disk
+    :param show_image: If True, we will visualize the original images from which the patches are generated
+    :returns: Nothing
+    """
     loader.create_rgb_and_nir_patches(show_image=show_image)
     loader.create_swir_patches(show_img=show_image)
     loader.create_mask_patches(show_mask=show_image)
 
 
+def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
+    """
+    Load the training, validation, and test datasets
+    :param loader: The DataLoader that will be used to read the patches from disk
+    :param config: The script configuration encoded as a Python dictionary; typically read from an external file
+    :returns: The training, validation, and test data as a tuple of the form (train, validation, test)
+    """
+    bands = config["hyperparameters"]["bands"]
+    batch_size = config["hyperparameters"]["batch_size"]
+    lower_bound, upper_bound = loader.get_bounds()
+    assert lower_bound == 1 and upper_bound == 3600, f"Error: Bounds Must Be Between 1 and 3600 (Got [{lower_bound}, {upper_bound}])"
+    train_data = ImgSequence(loader, 1, 2700, bands=bands, batch_size=batch_size)
+    val_data = ImgSequence(loader, 2701, 3000, bands=bands, batch_size=batch_size)
+    test_data = ImgSequence(loader, 3001, 3600, bands=bands, batch_size=batch_size)
+    return train_data, val_data, test_data
+
+
 def show_samples(loader: DataLoader) -> None:
+    """Visualize A Selection Of Patches"""
     rgb_samples, nir_samples, swir_samples, mask_samples = [], [], [], []
     for patch in range(1003, 1006):
         rgb, nir, swir = loader.get_rgb_features(patch), loader.get_nir_features(patch), loader.get_swir_features(patch)
@@ -262,12 +319,56 @@ def show_samples(loader: DataLoader) -> None:
     loader.plot_samples(rgb_samples, nir_samples, swir_samples, mask_samples)
 
 
-def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
-    bands = config["hyperparameters"]["bands"]
-    batch_size = config["hyperparameters"]["batch_size"]
+def analyze_dataset(loader: DataLoader) -> None:
+    """
+    Perform statistical analysis of the dataset
+    :param loader: The DataLoader that will be used to read the patches from disk
+    :returns: Nothing
+    """
+    # Analyze Initial Mask
+    mask = np.clip(loader.read_image("data/label.tif"), a_min=0, a_max=1)
+    total_pixels = mask.size
+    water_pixels = np.sum(mask)
+    print("\nMASK\n")
+    print(f"Total Pixels: {total_pixels}\nWater Pixels: {water_pixels}\nWater Percentage: {round(water_pixels / total_pixels * 100.0, ndigits=2)}%")
+
+    # Analyze Patches
+    water_pixels_hist = []
     lower_bound, upper_bound = loader.get_bounds()
-    assert lower_bound == 1 and upper_bound == 3600, f"Error: Bounds Must Be Between 1 and 3600 (Got [{lower_bound}, {upper_bound}])"
-    train_data = ImgSequence(loader, 1, 2700, bands=bands, batch_size=batch_size)
-    val_data = ImgSequence(loader, 2701, 3000, bands=bands, batch_size=batch_size)
-    test_data = ImgSequence(loader, 3001, 3600, bands=bands, batch_size=batch_size)
-    return train_data, val_data, test_data
+    for patch in range(lower_bound, upper_bound+1):
+        mask_patch = loader.get_mask(patch)
+        total_pixels = mask_patch.size
+        water_pixels = np.sum(mask_patch)
+        water_percentage = water_pixels / total_pixels * 100.0
+        water_pixels_hist.append(water_percentage)
+    
+    # Generate Histogram For All Patches
+    stats = plt.hist(water_pixels_hist, bins=np.arange(0.0, 51.0, 2.5))
+    plt.title("All Patches")
+    plt.xlabel("Water Pixels (%)")
+    plt.ylabel("Patches (Count)")
+    plt.savefig("images/histogram_all.png", bbox_inches='tight')
+    plt.cla()
+    
+    # Summarize Histogram Statistics
+    print("\nSUMMARIZE PATCH HISTOGRAM\n")
+    for count, b in zip(stats[0], stats[1]):
+        print(f"[{b}, {b+2.5}): {int(count)}")
+    
+
+    # Generate Histogram For Patches With At Least 5% Water
+    stats = plt.hist(list(filter(lambda x: x >= 5.0, water_pixels_hist)), bins=np.arange(5.0, 51.0, 2.5))
+    plt.title("Patches With At Least 5% Water")
+    plt.xlabel("Water Pixels (%)")
+    plt.ylabel("Patches (Count)")
+    plt.savefig("images/histogram_over5.png", bbox_inches='tight')
+    plt.cla()
+
+    # Additional Statistics
+    print("\nADDITIONAL STATISTICS\n")
+    print(f"Patches With No Water: {len(list(filter(lambda x: x == 0.0, water_pixels_hist)))}")
+    print(f"Patches With Water: {len(list(filter(lambda x: x > 0.0, water_pixels_hist)))}")
+    print(f"Patches With Less Than 5% Water: {len(list(filter(lambda x: x < 5.0, water_pixels_hist)))}")
+    print(f"Patches With Over 5% Water: {len(list(filter(lambda x: x >= 5.0, water_pixels_hist)))}")
+    print(f"Patches With Less Than 10% Water: {len(list(filter(lambda x: x < 10.0, water_pixels_hist)))}")
+    print(f"Patches With Over 10% Water: {len(list(filter(lambda x: x >= 10.0, water_pixels_hist)))}")
