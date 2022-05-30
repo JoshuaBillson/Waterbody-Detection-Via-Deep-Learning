@@ -10,8 +10,7 @@
     "model": "unet",
     "bands": ["NIR"],
     "backbone": null,
-    "alpha": 0.5,
-    "learning_rate": 0.00005,
+    "learning_rate": 0.0001,
     "optimizer": "adam",
     "batch_size": 4,
     "epochs": 5 }

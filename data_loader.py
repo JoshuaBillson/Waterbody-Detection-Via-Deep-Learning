@@ -1,10 +1,11 @@
 import os
 import math
 import shutil
+from isort import file
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, List
 from cv2 import normalize, NORM_MINMAX, CV_8U, LUT
 from tensorflow.keras.utils import Sequence as KerasSequence
 
@@ -176,6 +177,18 @@ class DataLoader:
         invGamma = 1 / gamma
         table = np.array([((i / 255.0) * invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
         return LUT(image, table)
+    
+    @staticmethod
+    def save_image(img: np.ndarray, filename: str) -> None:
+        """
+        Save a raster image to disk
+        :param img: The image we want to save encoded as a numpy array
+        :param filename: The name of the destination file at which we want to save the image
+        :returns: Nothing
+        """
+        height, width, count, dtype = img.shape[0], img.shape[1], img.shape[2], img.dtype
+        with rasterio.open(filename, 'w', driver='GTiff', height=height, width=width, count=count, dtype=dtype) as dst:
+            dst.write(np.moveaxis(img, -1, 0))
 
     @staticmethod
     def _threshold_channel(channel, threshold=3000):
@@ -195,11 +208,9 @@ class DataLoader:
         os.mkdir(img_directory)
 
         # Save Patches To Disk
-        height, width, count, dtype = patches[0].shape[0], patches[0].shape[1], patches[0].shape[2], patches[0].dtype
         for patch_number, patch in enumerate(patches):
             filename = f"{img_directory}/{image_type}.{patch_number + 1}.tif"
-            with rasterio.open(filename, 'w', driver='GTiff', height=height, width=width, count=count, dtype=dtype) as dst:
-                dst.write(np.moveaxis(patch, -1, 0))
+            self.save_image(patch, filename)
 
     def _segment_image(self, img, is_swir=False):
         # Compute Dimentions
@@ -275,6 +286,13 @@ class ImgSequence(KerasSequence):
         elif "NIR" in self.bands:
             return np.array(nir_batch).astype("float32"), np.array(mask_batch).astype("float32")
         return np.array(swir_batch).astype("float32"), np.array(mask_batch).astype("float32")
+    
+    def get_patch_indices(self) -> List[int]:
+        """
+        Get the patch indices for all patches in this dataset
+        :returns: The list of all patch indices in this dataset.
+        """
+        return list(self.indices)
 
 
 def create_patches(loader: DataLoader, show_image: bool = False) -> None:
