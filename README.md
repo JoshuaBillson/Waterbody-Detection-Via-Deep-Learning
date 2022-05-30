@@ -27,9 +27,7 @@ The script expects an external file called `config.json` in which the use should
     "model": "unet",
     "bands": ["NIR"],
     "backbone": null,
-    "alpha": 0.5,
     "learning_rate": 0.00005,
-    "optimizer": "adam",
     "batch_size": 4,
     "epochs": 5 }
 }
@@ -44,6 +42,16 @@ The script expects an external file called `config.json` in which the use should
 | timestamp        | The timestamp we want to use for the dataset     | {1, 2, 3}       |
 | patch_size       | The desired of the generated patches             | {128, 256, 512} |
 | train            | Whether or not we want to run the training loop  | Boolean         |
+
+### Available Hyperparameters
+| Hyperparameter   | Effects                                               |  Values                                         |
+|------------------|-------------------------------------------------------|:-----------------------------------------------:|
+| model            | The model we want to use                              | Name of either a base or checkpointed model     |
+| bands            | The bands used as inpiut to the model                 | A list containing any of {"RGB", "NIR", "SWIR"} |
+| backbone         | The model of the pre-trained backbone we want to use  | Name of the backbone ("ResNet152", etc.)        |
+| learning_rate    | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
+| batch_size       | The size of batches used in training                  | Non-Zero Positive Integer                       |
+| epochs           | The number of epochs to train for                     | Non-Zero Positive Integer                       |
 
 # Supported Bands
 
