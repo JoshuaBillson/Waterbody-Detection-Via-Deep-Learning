@@ -40,7 +40,7 @@ The script expects an external file called `config.json` in which the use should
 | show_data        | Visualize the initial dataset                    | Boolean         |
 | show_samples     | Visualize a sample of patches                    | Boolean         |
 | timestamp        | The timestamp we want to use for the dataset     | {1, 2, 3}       |
-| patch_size       | The desired of the generated patches             | {128, 256, 512} |
+| patch_size       | The desired size of the generated patches        | {128, 256, 512} |
 | train            | Whether or not we want to run the training loop  | Boolean         |
 
 ### Available Hyperparameters
