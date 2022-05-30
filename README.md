@@ -46,19 +46,24 @@ The script expects an external file called `config.json` in which the use should
 ### Available Hyperparameters
 | Hyperparameter   | Effects                                               |  Values                                         |
 |------------------|-------------------------------------------------------|:-----------------------------------------------:|
-| model            | The model we want to use                              | Name of either a base or checkpointed model     |
-| bands            | The bands used as inpiut to the model                 | A list containing any of {"RGB", "NIR", "SWIR"} |
-| backbone         | The model of the pre-trained backbone we want to use  | Name of the backbone ("ResNet152", etc.)        |
+| model            | The model we want to use                              | String                                          |
+| bands            | The bands used as inpiut to the model                 | List<String>                                    |
+| backbone         | The model of the pre-trained backbone we want to use  | String                                          |
 | learning_rate    | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
 | batch_size       | The size of batches used in training                  | Non-Zero Positive Integer                       |
 | epochs           | The number of epochs to train for                     | Non-Zero Positive Integer                       |
 
-# Supported Bands
+### Additional Notes
+`model` Can be either the name of a base model in the set {"unet", "vnet", "unet_plus", "unet_3_plus", "r2_unet", "resunet", "u2net", "transunet", "swin_unet", "att_unet", "fpn", "link_net", "psp_net"} or an existing checkpointed model such as "unet.nir.none.1653771136". In the case of the former, a new named model will be constructed and checkpointed. In the case of the latter, the saved model will be reinitialized from its saved weights.  
 
-1. RGB
-2. NIR
-3. SWIR
-4. RGB + NIR
-5. RGB + SWIR *
-6. NIR + SWIR *
-7. RGB + NIR + SWIR *
+`bands` Is a non-empty list containing any combination of the strings in the set {"RGB", "NIR", "SWIR"}.  
+
+`backbone` A string belonging to the set {"VGG[16, 19]", "ResNet[50,101,152]", "ResNet[50,101,152]V2", "DenseNet[121,169,201]", "EfficientNetB[0-7]"} or `null` if you don't want to use a pre-trained backbone.  
+
+
+# Model Naming Conventions
+All saved models are named following the convention {base_model}.{bands}.{backbone}.{time}. So a model based on U-Net++ with a trained ResNet152 backbone taking the RGB and NIR bands as input could be named "unet_plus.rgb+nir.resnet152.1653771136".  
+
+# Logs
+Training performance is logged every epoch with both TensorBoard and CSV. If loading a previously trained model, the logs for the new epochs will be appended to the existing logs.  
+  
