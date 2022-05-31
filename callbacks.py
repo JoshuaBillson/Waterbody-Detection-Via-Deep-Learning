@@ -1,8 +1,9 @@
 import shutil
+import math
 import os
 from typing import Dict, Any, List
 from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback
+from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler
 import numpy as np
 from matplotlib import pyplot as plt
 from data_loader import DataLoader
@@ -80,6 +81,15 @@ class PredictionCallback(Callback):
             plt.close()
 
 
+def lr_scheduler(epoch, learning_rate):
+        """
+        learning rate decrease according to the model performance
+        :param epoch: The current epoch
+        :returns: The new learning rate
+        """
+        return learning_rate * math.pow(0.5, epoch // 10)
+
+
 def get_callbacks(config: Dict[str, Any], val_data: List[int], model: Model, data_loader: DataLoader) -> List[Callback]:
     """
     Get the callbacks to be used when training the model
@@ -90,7 +100,8 @@ def get_callbacks(config: Dict[str, Any], val_data: List[int], model: Model, dat
     csv = CSVLogger(filename=f"logs/csv/{model.name}.csv", append=True)
     checkpoint = ModelCheckpoint(f"checkpoints/{model.name}", save_best_only=False)
     prediction_logger = PredictionCallback(val_data, model, data_loader, config)
-    return [tensorboard, csv, checkpoint, prediction_logger]
+    learning_rate_scheduler = LearningRateScheduler(lr_scheduler)
+    return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler]
 
 
 def create_callback_dirs() -> None:

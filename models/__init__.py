@@ -11,6 +11,7 @@ from models.u2net import u2net
 from models.transunet import transunet
 from models.swin_unet import swin_unet
 from models.att_unet import att_unet
+from models.fpn import fpn
 from config import get_model_type
 
 
@@ -31,6 +32,7 @@ def get_model(config: Dict[str, Any]) -> Model:
               "transunet": transunet,
               "swin_unet": swin_unet,
               "att_unet": att_unet,
+              "fpn": fpn,
               }
     if model in os.listdir("checkpoints"):
         base_model: Model = models[model.split(".")[0]](config)

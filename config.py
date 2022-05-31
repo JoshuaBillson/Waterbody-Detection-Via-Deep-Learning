@@ -81,5 +81,6 @@ def get_model_config(config: Dict[str, Any]) -> Tuple[int, str]:
     bands = get_bands(config)
     backbone = get_backbone(config)
     input_channels = len(bands) + 2 if "RGB" in bands else len(bands)
-    assert not (backbone is not None and input_channels != 3), "Error: Cannot Use Backbone For Input Channels Other Than 3!"
+    model_type = get_model_type(config)
+    assert not (backbone is not None and input_channels != 3 and model_type not in ["fpn", "pspnet", "linknet"]), "Error: Cannot Use Backbone For Input Channels Other Than 3!"
     return input_channels, backbone

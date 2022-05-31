@@ -7,7 +7,9 @@ from tensorflow.keras.layers import Input
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
 
+from models.metrics import MIoU
 from models.losses import DiceBCELoss, JaccardBCELoss
 from data_loader import DataLoader, create_patches, show_samples, load_dataset
 from models.layers import preprocessing_layer
@@ -39,7 +41,7 @@ def main():
     # Create Model
     model = get_model(config)
     model.summary()
-    model.compile(loss=JaccardBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MeanIoU(num_classes=2), Precision(), Recall()])
+    model.compile(loss=JaccardBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MIoU, Precision(), Recall()])
 
     # Get Callbacks
     create_callback_dirs()
@@ -60,7 +62,13 @@ def main():
 
 
 if __name__ == '__main__':
+    # Set Visible GPU
     args = sys.argv
     GPU = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
     os.environ["CUDA_VISIBLE_DEVICES"]=f"{GPU}"
+
+    # Use Mixed Precision
+    # mixed_precision.set_global_policy('mixed_float16')
+
+    # Run Script
     main()

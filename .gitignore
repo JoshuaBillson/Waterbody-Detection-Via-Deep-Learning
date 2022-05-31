@@ -5,4 +5,5 @@ data
 __pycache__
 logs
 checkpoints
-predictions
+predictions/
+predictions/*
