@@ -1,6 +1,5 @@
 from typing import Dict, Any
 from tensorflow.keras.models import Model
-from keras_unet_collection.models import vnet_2d
 from segmentation_models import FPN
 from config import get_model_config
 from models.utils import assemble_model
@@ -16,6 +15,7 @@ def fpn(config: Dict[str, Any]) -> Model:
     input_channels, backbone = get_model_config(config)
 
     # Construct Base Model
+    backbone = backbone if backbone is not None else "efficientnetb0"
     model = FPN(backbone_name=backbone, input_shape=(config["patch_size"], config['patch_size'], input_channels), classes=2, activation='sigmoid', encoder_weights=None, weights=None)
     model.summary()
 

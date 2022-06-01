@@ -9,10 +9,10 @@ from tensorflow.keras.optimizers import Adam
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
 
-from models.metrics import MIoU
+from metrics import MIoU
 from models.losses import DiceBCELoss, JaccardBCELoss
+from models.utils import predict_batch
 from data_loader import DataLoader, create_patches, show_samples, load_dataset
-from models.layers import preprocessing_layer
 from models import get_model
 from config import get_epochs, get_model_type, get_timestamp, get_learning_rate
 from callbacks import get_callbacks, create_callback_dirs
@@ -54,6 +54,7 @@ def main():
             last_line = csvfile.readlines()[-1]
             initial_epoch = int(last_line.split(",")[0]) + 1
 
+    # predict_batch(val_data.get_patch_indices(), loader, model, config, "foo")
 
     # Train Model
     print(f"EPOCH: {initial_epoch}")

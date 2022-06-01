@@ -55,6 +55,43 @@ class DataLoader:
         max_patch = max([int(x.split(".")[1]) for x in files])
         return min_patch, max_patch
 
+    def get_batch(self, batch: List[int], bands: List[str], threshold: float = 0.0) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
+        masks, rgb_features, nir_features, swir_features, indices = [], [], [], [], []
+        for patch in batch:
+            mask = self.get_mask(patch)
+            
+            # Return Patches Whose Water Content Meets The Threshold 
+            if (np.sum(mask) / mask.size * 100.0) >= threshold:
+
+                # Read Mask And Index
+                masks.append(mask)
+
+                # Store Patch Index
+                indices.append(patch)
+
+                # Read RGB Features
+                if "RGB" in bands:
+                    rgb_features.append(self.get_rgb_features(patch))
+
+                # Read NIR Features
+                if "NIR" in bands:
+                    nir_features.append(self.get_nir_features(patch))
+
+                # Read SWIR Features
+                if "SWIR" in bands:
+                    swir_features.append(self.get_swir_features(patch))
+        
+        # Return Batch
+        features = []
+        if "RGB" in bands:
+            features.append(np.array(rgb_features).astype("float32"))
+        if "NIR" in bands:
+            features.append(np.array(nir_features).astype("float32"))
+        if "SWIR" in bands:
+            features.append(np.array(swir_features).astype("float32"))
+        return features, np.array(masks), np.array(indices)
+                
+
     def create_rgb_and_nir_patches(self, show_image: bool = False) -> None:
         """
         Creates RGB and NIR patches from the original image and saves them to disk
@@ -267,11 +304,11 @@ class ImgSequence(KerasSequence):
 
             # Get NIR Features
             if "NIR" in self.bands:
-                nir_batch.append(self.data_loader.get_nir_features(b))
+                nir_batch.append(np.clip(self.data_loader.get_nir_features(b), a_min=0.0, a_max=3000.0))
 
             # Get SWIR Features
             if "SWIR" in self.bands:
-                swir_batch.append(self.data_loader.get_swir_features(b))
+                swir_batch.append(np.clip(self.data_loader.get_swir_features(b), a_min=0.0, a_max=3000.0))
 
         # Return Batch
         if all([band in self.bands for band in ["RGB", "NIR", "SWIR"]]):
@@ -285,6 +322,9 @@ class ImgSequence(KerasSequence):
         elif "NIR" in self.bands:
             return np.array(nir_batch).astype("float32"), np.array(mask_batch).astype("float32")
         return np.array(swir_batch).astype("float32"), np.array(mask_batch).astype("float32")
+    
+    def on_epoch_end(self):
+        np.random.shuffle(self.indices)
     
     def get_patch_indices(self) -> List[int]:
         """

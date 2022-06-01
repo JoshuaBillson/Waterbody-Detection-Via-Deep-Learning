@@ -1,9 +1,14 @@
-import time
-from typing import Dict, Any
+import os
+import numpy as np
+import shutil
+from typing import Dict, Any, List
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose
 from tensorflow.keras.models import Model
 from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer
-from config import get_model_type, get_bands, get_backbone
+from config import get_model_type, get_bands, get_backbone, get_patch_size, get_experiment_tag
+from data_loader import DataLoader
+from metrics import MIoU
+import matplotlib.pyplot as plt
 
 
 def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -108,8 +113,48 @@ def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
 
 def get_model_name(config: Dict[str, Any]) -> str:
     """
-    Construct a name for the configured model of the format {model_type}.{bands}.{time}
+    Construct a name for the configured model of the format {model_type}.{bands}.{experiment_tag}.{model_id}
     :param config: The model configuration
     :return: The formatted name of the configured model
     """
-    return f"{get_model_type(config)}.{'+'.join(get_bands(config))}.{get_backbone(config)}.{int(time.time())}".lower() if "." not in get_model_type(config) else get_model_type(config)
+    model_type = get_model_type(config)
+    saved_models = os.listdir("checkpoints")
+    # If model_type Is A Checkpointed Model, We Return Its Name As-Is
+    if model_type in saved_models:
+        return model_type
+    
+    # Otherwise, We Create A New Unique Name
+    partial_name = f"{model_type}.{'+'.join(get_bands(config))}.{get_experiment_tag(config)}".lower()
+    model_id = len(list(filter(lambda x: partial_name in x, saved_models)))
+    return f"{partial_name}.{model_id}"
+
+
+def predict_batch(batch: List[int], data_loader: DataLoader, model: Model, config: Dict[str, Any], directory: str, threshold) -> None:
+    # Load Batch
+    features, masks, indices = data_loader.get_batch(batch, get_bands(config), threshold=threshold)
+    
+    # Get Predictions
+    predictions = []
+    for feature_index in range(len(features[0])):
+        prediction = model.predict([feature[feature_index:feature_index+1] for feature in features])
+        predictions.append(prediction[0, ...])
+
+    # Create Directory To Save Predictions
+    if directory not in os.listdir():
+        os.mkdir(directory)
+    if model.name in os.listdir(directory):
+        shutil.rmtree(f"{directory}/{model.name}")
+    os.mkdir(f"{directory}/{model.name}")
+
+    # Save Model Predictions To Disk
+    for prediction, mask, index in zip(predictions, masks, indices):
+        miou = MIoU(mask.astype("float32"), prediction)
+        fig, axs = plt.subplots(1, 2)
+        fig.tight_layout()
+        axs[0].imshow(mask)
+        axs[0].set_title("Ground Truth")
+        axs[1].imshow(np.where(prediction < 0.5, 0, 1))
+        axs[1].set_title(f"{model.name} ({miou.numpy():.3f})")
+        plt.savefig(f"{directory}/{model.name}/prediction.{index}.png", dpi=300, bbox_inches='tight')
+        plt.cla()
+        plt.close()

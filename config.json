@@ -5,15 +5,17 @@
   "show_samples": false,
   "timestamp": 1,
   "patch_size": 512,
+  "experiment_tag": "baseline",
+  "create_logs": true,
   "train": true,
   "test": false,
   "hyperparameters": {
-    "model": "fpn",
+    "model": "unet",
     "bands": ["NIR"],
-    "backbone": "efficientnetb0",
-    "learning_rate": 0.0001,
+    "backbone": null,
+    "learning_rate": 0.00005,
     "optimizer": "adam",
-    "batch_size": 2,
+    "batch_size": 4,
     "epochs": 10 }
 }
 

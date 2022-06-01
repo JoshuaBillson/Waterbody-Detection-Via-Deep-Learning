@@ -5,9 +5,10 @@ from typing import Dict, Any, List
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler
 import numpy as np
+from models.utils import predict_batch
 from matplotlib import pyplot as plt
 from data_loader import DataLoader
-from config import get_bands
+from config import get_bands, get_create_logs
 
 
 class PredictionCallback(Callback):
@@ -20,65 +21,11 @@ class PredictionCallback(Callback):
         
     def on_epoch_end(self, epoch, logs=None):
         """
-        Summary:
-            call after every epoch to predict mask
-        Arguments:
-            epoch (int): current epoch
-        Output:
-            save predict mask
+        Call after every epoch to predict mask
+        :param epoch: Current epoch
+        :returns: Nothing
         """
-        # Filter Out patches With Less Than 5% Water Coverage
-        masks, features, indices, bands = [], [], [], get_bands(self.config)
-        for patch in self.val_data:
-            mask = self.data_loader.get_mask(patch)
-            if (np.sum(mask) / mask.size * 100.0) >= 5.0:
-
-                # Keep Mask And Index
-                masks.append(mask)
-                indices.append(patch)
-
-                # Keep RGB Feature
-                feature_list = []
-                if "RGB" in bands:
-                    rgb_feature = self.data_loader.get_rgb_features(patch)
-                    feature_list.append(np.reshape(rgb_feature, (1, rgb_feature.shape[0], rgb_feature.shape[1], rgb_feature.shape[2])))
-
-                # Keep NIR Feature
-                if "NIR" in bands:
-                    nir_feature = self.data_loader.get_nir_features(patch)
-                    feature_list.append(np.reshape(nir_feature, (1, nir_feature.shape[0], nir_feature.shape[1], nir_feature.shape[2])))
-
-                # Keep SWIR Feature
-                if "SWIR" in bands:
-                    swir_feature = self.data_loader.get_swir_features(patch)
-                    feature_list.append(np.reshape(swir_feature, (1, swir_feature.shape[0], swir_feature.shape[1], swir_feature.shape[2])))
-                
-                features.append(feature_list)
-
-        # Create Predictions Directory
-        if "predictions" not in os.listdir():
-            os.mkdir("predictions")
-        if self.model.name in os.listdir("predictions"):
-            shutil.rmtree(f"predictions/{self.model.name}")
-        os.mkdir(f"predictions/{self.model.name}")
-
-        # Save Model Predictions To Disk
-        print(len(masks))
-        for mask, feature, index in zip(masks, features, indices):
-
-            # Make Prediction
-            prediction = self.model.predict(feature)
-            
-            # Plot Prediction
-            fig, axs = plt.subplots(1, 2)
-            fig.tight_layout()
-            axs[0].imshow(mask)
-            axs[0].set_title("Mask")
-            axs[1].imshow(np.where(prediction < 0.5, 0, 1)[0, ...])
-            axs[1].set_title(self.model.name)
-            plt.savefig(f"predictions/{self.model.name}/prediction.{index + 1}.png", dpi=300, bbox_inches='tight')
-            plt.cla()
-            plt.close()
+        predict_batch(self.val_data, self.data_loader, self.model, self.config, "validation", 5.0)
 
 
 def lr_scheduler(epoch, learning_rate):
@@ -87,7 +34,7 @@ def lr_scheduler(epoch, learning_rate):
         :param epoch: The current epoch
         :returns: The new learning rate
         """
-        return learning_rate * math.pow(0.5, epoch // 10)
+        return learning_rate * math.pow(0.5, epoch // 5)
 
 
 def get_callbacks(config: Dict[str, Any], val_data: List[int], model: Model, data_loader: DataLoader) -> List[Callback]:
@@ -101,7 +48,7 @@ def get_callbacks(config: Dict[str, Any], val_data: List[int], model: Model, dat
     checkpoint = ModelCheckpoint(f"checkpoints/{model.name}", save_best_only=False)
     prediction_logger = PredictionCallback(val_data, model, data_loader, config)
     learning_rate_scheduler = LearningRateScheduler(lr_scheduler)
-    return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler]
+    return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler] if get_create_logs(config) else [learning_rate_scheduler]
 
 
 def create_callback_dirs() -> None:
