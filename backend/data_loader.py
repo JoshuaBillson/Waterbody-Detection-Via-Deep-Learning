@@ -374,7 +374,7 @@ class ImgSequence(KerasSequence):
             features, mask = self._get_features(patch_index)
         
             # Get Prediction
-            prediction = model.predict(np.array([DataLoader.normalize_channels(features[0].astype("float32"))]))
+            prediction = model.predict([np.array([DataLoader.normalize_channels(feature.astype("float32"))]) for feature in features])
 
             # Plot Prediction And Save To Disk
             MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])

@@ -34,16 +34,16 @@ def swir_input_layer(config: Dict[str, Any]):
     return preprocessing_layer(config["patch_size"] // 2, is_rgb=False)
 
 
-def rgb_nir_input_layer(config: Dict[str, Any]):
+def rgb_nir_input_layer(rgb_inputs: Layer, nir_inputs: Layer):
     """
     Construct An Input Layer For RGB + NIR Bands
     :param config: A dictionary storing the script configuration
     :return: The input and output layers as the tuple (inputs, outputs)
     """
-    rgb_input, rgb_output = rgb_input_layer(config)
-    nir_input, nir_output = nir_input_layer(config)
-    concat = concatenate([rgb_output, nir_output], axis=3)
-    return [rgb_input, nir_input], concat
+    rgb_conv = Conv2D(24, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(rgb_inputs)
+    nir_conv = Conv2D(8, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(nir_inputs)
+    concat = concatenate([rgb_conv, nir_conv], axis=3)
+    return concat
 
 
 @tf.function

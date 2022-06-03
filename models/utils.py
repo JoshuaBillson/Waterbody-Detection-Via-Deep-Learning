@@ -93,9 +93,12 @@ def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    inputs = rgb_nir_input_layer(config)
-    outputs = model(inputs)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
+    patch_size = config["patch_size"]
+    rgb_inputs = Input(shape=(patch_size, patch_size, 3))
+    nir_inputs = Input(shape=(patch_size, patch_size, 1))
+    x = rgb_nir_input_layer(rgb_inputs, nir_inputs)
+    outputs = model(x)
+    return Model(inputs=[rgb_inputs, nir_inputs], outputs=outputs, name=get_model_name(config))
 
 
 def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -130,7 +133,7 @@ def get_model_name(config: Dict[str, Any]) -> str:
         return model_type
     
     # Otherwise, We Create A New Unique Name
-    partial_name = f"{model_type}.{'+'.join(get_bands(config))}.{get_experiment_tag(config)}".lower()
+    partial_name = f"{model_type}.{'_'.join(get_bands(config))}.{get_experiment_tag(config)}".lower()
     existing_ids = [int(model.split(".")[-1]) for model in saved_models if partial_name in model]
     possible_ids = [possible_id for possible_id in range(0, max(existing_ids) + 2) if possible_id not in existing_ids] if existing_ids else [0]
     model_id = possible_ids[0]
