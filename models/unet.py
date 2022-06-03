@@ -15,7 +15,7 @@ def unet(config: Dict[str, Any]) -> Model:
     input_channels, backbone = get_model_config(config)
 
     # Construct Base Model
-    model = unet_2d(input_size=(config["patch_size"], config["patch_size"], input_channels), filter_num=[64, 128, 256, 512, 1024], n_labels=2, backbone=backbone)
+    model = unet_2d(input_size=(config["patch_size"], config["patch_size"], 32), filter_num=[64, 128, 256, 512, 1024], n_labels=2, backbone=backbone)
     model.summary()
 
     # Replace Input And Output Layers

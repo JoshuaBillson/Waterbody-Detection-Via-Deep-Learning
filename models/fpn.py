@@ -16,7 +16,7 @@ def fpn(config: Dict[str, Any]) -> Model:
 
     # Construct Base Model
     backbone = backbone if backbone is not None else "efficientnetb0"
-    model = FPN(backbone_name=backbone, input_shape=(config["patch_size"], config['patch_size'], input_channels), classes=2, activation='sigmoid', encoder_weights=None, weights=None)
+    model = FPN(backbone_name=backbone, input_shape=(config["patch_size"], config['patch_size'], 32), classes=2, activation='sigmoid', encoder_weights=None, weights=None)
     model.summary()
 
     # Replace Input And Output Layers

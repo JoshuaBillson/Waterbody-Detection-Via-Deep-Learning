@@ -1,12 +1,16 @@
+import imp
 import os
 import math
+import random
 import shutil
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple, Sequence, List
-from cv2 import normalize, NORM_MINMAX, CV_8U, LUT
+from typing import Tuple, Sequence, List, Dict, Any
 from tensorflow.keras.utils import Sequence as KerasSequence
+from tensorflow.keras.models import Model
+from backend.utils import adjust_rgb
+from backend.metrics import MIoU
 
 
 class DataLoader:
@@ -16,29 +20,29 @@ class DataLoader:
         self.tile_size = tile_size
         self.folders = {1: "2018.04", 2: "2018.12", 3: "2019.02"}
 
-    def get_rgb_features(self, patch_number: int) -> np.ndarray:
+    def get_rgb_features(self, patch_number: int, preprocess_img: bool = True) -> np.ndarray:
         """
         Get RGB Features Matching The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The RGB features of the matching patch,
         """
-        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/rgb/rgb.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/rgb/rgb.{patch_number}.tif", preprocess_img=preprocess_img)
 
-    def get_nir_features(self, patch_number: int) -> np.ndarray:
+    def get_nir_features(self, patch_number: int, preprocess_img: bool = True) -> np.ndarray:
         """
         Get NIR Features Matching The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The NIR features of the matching patch,
         """
-        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/nir/nir.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/nir/nir.{patch_number}.tif", preprocess_img=preprocess_img)
 
-    def get_swir_features(self, patch_number: int) -> np.ndarray:
+    def get_swir_features(self, patch_number: int, preprocess_img: bool = True) -> np.ndarray:
         """
         Get SWIR Features Matching The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The SWIR features of the matching patch,
         """
-        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/swir/swir.{patch_number}.tif")
+        return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/swir/swir.{patch_number}.tif", preprocess_img=preprocess_img)
 
     def get_mask(self, patch_number: int) -> np.ndarray:
         """
@@ -103,8 +107,7 @@ class DataLoader:
         # Show RGB Image
         if show_image:
             rgb_img = img[..., 0:3]
-            img_scaled = normalize(rgb_img, None, 0, 255, NORM_MINMAX, dtype=CV_8U)
-            img_scaled = DataLoader.adjust_gamma(img_scaled, 0.2)
+            img_scaled = adjust_rgb(rgb_img, gamma=0.2)
             plt.imshow(img_scaled)
             plt.savefig(f"images/rgb.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
             plt.show()
@@ -156,10 +159,11 @@ class DataLoader:
         self._write_patches(patches, "mask")
 
     @staticmethod
-    def read_image(filename: str) -> np.ndarray:
+    def read_image(filename: str, preprocess_img: bool = False) -> np.ndarray:
         """
         Reads a raster image from disk and returns it
         :param filename: The name of the file on disk that we want to read
+        :param preprocess_img: If True, the image is normalized before being returned to the caller
         :returns: The read image as a Numpy array
         """
         with rasterio.open(filename) as dataset:
@@ -172,7 +176,8 @@ class DataLoader:
             channels = [np.reshape(channel, shape) for channel in channels]
 
             # Concat Channels If More Than One
-            return np.concatenate(channels, axis=2) if len(channels) > 1 else channels[0]
+            img = np.concatenate(channels, axis=2) if len(channels) > 1 else channels[0]
+            return DataLoader.normalize_channels(img.astype("float32")) if preprocess_img else img
 
     def plot_samples(self, rgb_samples: Sequence[np.ndarray], nir_samples: Sequence[np.ndarray], swir_samples: Sequence[np.ndarray], mask_samples: Sequence[np.ndarray]) -> None:
         """
@@ -194,7 +199,7 @@ class DataLoader:
         # Plot Samples
         for rgb_sample, nir_sample, swir_sample, mask_sample, ax in zip(rgb_samples, nir_samples, swir_samples, mask_samples, axs):
             ax[0].imshow(mask_sample)
-            ax[1].imshow(DataLoader.adjust_gamma(normalize(rgb_sample, None, 0, 255, NORM_MINMAX, dtype=CV_8U), 0.4))
+            ax[1].imshow(adjust_rgb(rgb_sample))
             ax[2].imshow(DataLoader._threshold_channel(nir_sample))
             ax[3].imshow(DataLoader._threshold_channel(swir_sample))
 
@@ -202,18 +207,6 @@ class DataLoader:
         plt.savefig(f"images/samples.{self.timestamp}.png", dpi=2500, bbox_inches='tight')
         plt.show()
 
-    @staticmethod
-    def adjust_gamma(image: np.ndarray, gamma: float = 1.0):
-        """
-        Perform gamma correction on the provided image
-        :param image: The image to which we want to apply gamme correction
-        :param gamma: The ammount of gamma correction to apply
-        :returns: The gamma corrected image
-        """
-        invGamma = 1 / gamma
-        table = np.array([((i / 255.0) * invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
-        return LUT(image, table)
-    
     @staticmethod
     def save_image(img: np.ndarray, filename: str) -> None:
         """
@@ -225,6 +218,21 @@ class DataLoader:
         height, width, count, dtype = img.shape[0], img.shape[1], img.shape[2], img.dtype
         with rasterio.open(filename, 'w', driver='GTiff', height=height, width=width, count=count, dtype=dtype) as dst:
             dst.write(np.moveaxis(img, -1, 0))
+
+    @staticmethod
+    def normalize_channels(img: np.ndarray) -> np.ndarray:
+        # First We Threshold SWIR and NIR Patches
+        if img.shape[-1] == 1:
+            img = np.clip(img, a_min=0.0, a_max=3000.0)
+
+        # Next We Normalize Each Channel By Subtracting The Mean And Scaling By The Inverse Of The Standard Deviation
+        for channel_index in range(img.shape[-1]):
+            channel = img[:, :, channel_index]
+            channel_mean = np.mean(channel)
+            channel_stdev = np.std(channel)
+            channel -= channel_mean
+            channel *= (1.0 / channel_stdev)
+        return img
 
     @staticmethod
     def _threshold_channel(channel, threshold=3000):
@@ -279,12 +287,14 @@ class DataLoader:
 
 
 class ImgSequence(KerasSequence):
-    def __init__(self, data_loader: DataLoader, lower_bound: int, upper_bound: int, batch_size: int = 32, bands: Sequence[str] = None):
+    def __init__(self, data_loader: DataLoader, lower_bound: int, upper_bound: int, batch_size: int = 32, bands: Sequence[str] = None, augment_data: bool = False, shuffle: bool = True):
         self.data_loader = data_loader
         self.batch_size = batch_size
         self.bands = ["RGB"] if bands is None else bands
         self.indices = np.array(range(lower_bound, upper_bound + 1))
-        np.random.shuffle(self.indices)
+        self.augment_data = augment_data
+        if shuffle:
+            np.random.shuffle(self.indices)
 
     def __len__(self) -> int:
         return math.ceil(len(self.indices) / self.batch_size)
@@ -295,20 +305,21 @@ class ImgSequence(KerasSequence):
         batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
         for b in batch:
 
-            # Get Mask
-            mask_batch.append(self.data_loader.get_mask(b))
+            # Get Mask And Features For Patch b
+            features, mask = self._get_features(b)
 
-            # Get RGB Features
+            # Augment Data
+            if self.augment_data:
+                features, mask = self.augment_patch(features, mask)
+            
+            # Add Features To Batch
+            mask_batch.append(mask)
             if "RGB" in self.bands:
-                rgb_batch.append(self.data_loader.get_rgb_features(b))
-
-            # Get NIR Features
+                rgb_batch.append(DataLoader.normalize_channels(features[0].astype("float32")))
             if "NIR" in self.bands:
-                nir_batch.append(np.clip(self.data_loader.get_nir_features(b), a_min=0.0, a_max=3000.0))
-
-            # Get SWIR Features
+                nir_batch.append(DataLoader.normalize_channels(features[1 if "RGB" in self.bands else 0].astype("float32")))
             if "SWIR" in self.bands:
-                swir_batch.append(np.clip(self.data_loader.get_swir_features(b), a_min=0.0, a_max=3000.0))
+                swir_batch.append(DataLoader.normalize_channels(features[len(self.bands) - 1].astype("float32")))
 
         # Return Batch
         if all([band in self.bands for band in ["RGB", "NIR", "SWIR"]]):
@@ -332,6 +343,116 @@ class ImgSequence(KerasSequence):
         :returns: The list of all patch indices in this dataset.
         """
         return list(self.indices)
+
+    def predict_batch(self, model: Model, directory: str) -> None:
+        """
+        Predict on a batch of feature samples and save the resulting prediction to disk alongside its mask and MIoU performance
+        :param batch: A list of patch indexes on which we want to predict
+        :param data_loader: An object for reading patches from the disk
+        :param model: The model whose prediction we are interested in
+        :param config: The script configuration stored as a dictionary; typically read from an external file
+        :param directory: The name of the directory in which we want to save the model predictions
+        :param threshold: We filter out patches whose water content percentage is below this value
+        :return: Nothing
+        """
+        # Create Directory To Save Predictions
+        if directory not in os.listdir():
+            os.mkdir(directory)
+        if model.name in os.listdir(directory):
+            shutil.rmtree(f"{directory}/{model.name}")
+        os.mkdir(f"{directory}/{model.name}")
+
+        # Iterate Over All Patches In Batch
+        for patch_index in self.indices:
+
+            # Load Features And Mask
+            features, mask = self._get_features(patch_index)
+        
+            # Get Prediction
+            prediction = model.predict(np.array([DataLoader.normalize_channels(features[0].astype("float32"))]))
+
+            # Plot Prediction And Save To Disk
+            miou = MIoU(mask.astype("float32"), prediction)
+            _, axs = plt.subplots(1, 3)
+            axs[0].imshow(adjust_rgb(features[0]) if self.bands[0] == "RGB" else features[0])
+            axs[0].set_title(self.bands[0])
+            axs[1].imshow(mask)
+            axs[1].set_title("Ground Truth")
+            axs[2].imshow(np.where(prediction < 0.5, 0, 1)[0])
+            axs[2].set_title(f"{model.name} ({miou.numpy():.3f})")
+            plt.tight_layout()
+            plt.savefig(f"{directory}/{model.name}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
+            plt.cla()
+            plt.close()
+
+    def augment_patch(self, patches: np.ndarray, mask: np.ndarray, threshold: float = 0.1) -> Tuple[np.ndarray]:
+        while self._water_content(mask) < threshold:
+
+            plt.imshow(mask)
+            plt.savefig("foo/mask.png", dpi=1000)
+            plt.show()
+
+            # Get Source Mask
+            source_index = random.randint(min(self.indices), max(self.indices))
+            source_mask = self.data_loader.get_mask(source_index)
+            plt.imshow(source_mask)
+            plt.savefig("foo/source_mask.png", dpi=1000)
+            plt.show()
+
+            # Get Source Features
+            methods = {"RGB": self.data_loader.get_rgb_features, "NIR": self.data_loader.get_nir_features, "SWIR": self.data_loader.get_swir_features}
+            for patch, band in zip(patches, self.bands):
+                plt.imshow(patch)
+                plt.savefig(f"foo/patch_{band}.png", dpi=1000)
+                plt.show()
+
+                source_feature = methods[band](source_index, preprocess_img=False)
+                plt.imshow(source_feature)
+                plt.savefig(f"foo/source_patch_{band}.png", dpi=1000)
+                plt.show()
+
+                # Extract Waterbody From Source Feature 
+                waterbody = source_mask * source_feature
+
+                # Remove Waterbody Region From Destination Feature
+                patch *= np.where(source_mask == 1, 0, 1).astype("uint16")
+
+                # Transfer Waterbody To Destination Feature Map
+                patch += waterbody
+                plt.imshow(patch)
+                plt.savefig(f"foo/final_patch_{band}.png", dpi=1000)
+                plt.show()
+
+            mask = np.where((mask + source_mask) >= 1, 1, 0).astype("uint16")
+            plt.imshow(mask)
+            plt.savefig("foo/final_mask.png", dpi=1000)
+            plt.show()
+            break
+
+        return patches, mask
+
+    def _water_content(self, mask: np.ndarray) -> float:
+        return np.sum(mask) / mask.size * 100.0
+    
+    def _get_features(self, patch: int) -> Tuple[List[np.ndarray], np.ndarray]:
+        # Get Mask
+        mask = self.data_loader.get_mask(patch)
+
+        # Get RGB Features
+        rgb_feature = self.data_loader.get_rgb_features(patch, preprocess_img=False) if "RGB" in self.bands else None
+
+        # Get NIR Features
+        nir_feature = self.data_loader.get_nir_features(patch, preprocess_img=False) if "NIR" in self.bands else None
+
+        # Get SWIR Features
+        swir_feature = self.data_loader.get_swir_features(patch, preprocess_img=False) if "SWIR" in self.bands else None
+
+        # Collect Features 
+        features = list(filter(lambda x: x is not None, (rgb_feature, nir_feature, swir_feature)))
+
+        return features, mask
+    
+
 
 
 def create_patches(loader: DataLoader, show_image: bool = False) -> None:
@@ -358,8 +479,8 @@ def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, 
     lower_bound, upper_bound = loader.get_bounds()
     assert lower_bound == 1 and upper_bound == 3600, f"Error: Bounds Must Be Between 1 and 3600 (Got [{lower_bound}, {upper_bound}])"
     train_data = ImgSequence(loader, 1, 2700, bands=bands, batch_size=batch_size)
-    val_data = ImgSequence(loader, 2701, 3000, bands=bands, batch_size=batch_size)
-    test_data = ImgSequence(loader, 3001, 3600, bands=bands, batch_size=batch_size)
+    val_data = ImgSequence(loader, 2701, 3000, bands=bands, batch_size=batch_size, shuffle=False)
+    test_data = ImgSequence(loader, 3001, 3600, bands=bands, batch_size=batch_size, shuffle=False)
     return train_data, val_data, test_data
 
 

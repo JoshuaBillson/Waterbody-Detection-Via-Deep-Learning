@@ -2,12 +2,12 @@ import os
 import numpy as np
 import shutil
 from typing import Dict, Any, List
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, Input
 from tensorflow.keras.models import Model
 from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer
 from config import get_model_type, get_bands, get_backbone, get_patch_size, get_experiment_tag
-from data_loader import DataLoader
-from metrics import MIoU
+from backend.data_loader import DataLoader
+from backend.metrics import MIoU
 import matplotlib.pyplot as plt
 
 
@@ -41,8 +41,10 @@ def rgb_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    inputs, out = rgb_input_layer(config)
-    outputs = model(out)
+    patch_size = config["patch_size"]
+    inputs = Input(shape=(patch_size, patch_size, 3))
+    x = rgb_input_layer(inputs)
+    outputs = model(x)
     return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
@@ -57,8 +59,10 @@ def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    inputs, out = nir_input_layer(config)
-    outputs = model(out)
+    patch_size = config["patch_size"]
+    inputs = Input(shape=(patch_size, patch_size, 1))
+    x = nir_input_layer(inputs)
+    outputs = model(x)
     return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
@@ -73,8 +77,8 @@ def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    inputs, out = swir_input_layer(config)
-    outputs = model(out)
+    inputs = swir_input_layer(config)
+    outputs = model(inputs)
     return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
@@ -89,8 +93,8 @@ def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    inputs, out = rgb_nir_input_layer(config)
-    outputs = model(out)
+    inputs = rgb_nir_input_layer(config)
+    outputs = model(inputs)
     return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
@@ -101,11 +105,13 @@ def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
     :param config: The model configuration
     :return: The final model.
     """
-    if "SWIR" in get_bands(config):
+    if False:
         x = base_model.layers[-3].output
-        up_sample = Conv2DTranspose(1, (2, 2), strides=(1, 1), padding='same')(x)
+        up_sample = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(x)
         outputs = Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(up_sample)  # create new last layer
-        return Model(inputs=base_model.input, outputs=outputs, name=f"{get_model_type(config)}_base")
+        model = Model(inputs=base_model.input, outputs=outputs, name=f"{get_model_type(config)}_base")
+        model.summary()
+        return model
     x = base_model.layers[-3].output
     outputs = Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
     return Model(inputs=base_model.input, outputs=outputs, name=f"{get_model_type(config)}_base")
@@ -117,19 +123,31 @@ def get_model_name(config: Dict[str, Any]) -> str:
     :param config: The model configuration
     :return: The formatted name of the configured model
     """
+    # If model_type Is A Checkpointed Model, We Return Its Name As-Is
     model_type = get_model_type(config)
     saved_models = os.listdir("checkpoints")
-    # If model_type Is A Checkpointed Model, We Return Its Name As-Is
     if model_type in saved_models:
         return model_type
     
     # Otherwise, We Create A New Unique Name
     partial_name = f"{model_type}.{'+'.join(get_bands(config))}.{get_experiment_tag(config)}".lower()
-    model_id = len(list(filter(lambda x: partial_name in x, saved_models)))
+    existing_ids = [int(model.split(".")[-1]) for model in saved_models if partial_name in model]
+    possible_ids = [possible_id for possible_id in range(0, max(existing_ids) + 2) if possible_id not in existing_ids] if existing_ids else [0]
+    model_id = possible_ids[0]
     return f"{partial_name}.{model_id}"
 
 
 def predict_batch(batch: List[int], data_loader: DataLoader, model: Model, config: Dict[str, Any], directory: str, threshold) -> None:
+    """
+    Predict on a batch of feature samples and save the resulting prediction to disk alongside its mask and MIoU performance
+    :param batch: A list of patch indexes on which we want to predict
+    :param data_loader: An object for reading patches from the disk
+    :param model: The model whose prediction we are interested in
+    :param config: The script configuration stored as a dictionary; typically read from an external file
+    :param directory: The name of the directory in which we want to save the model predictions
+    :param threshold: We filter out patches whose water content percentage is below this value
+    :return: Nothing
+    """
     # Load Batch
     features, masks, indices = data_loader.get_batch(batch, get_bands(config), threshold=threshold)
     

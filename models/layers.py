@@ -2,25 +2,27 @@ import tensorflow as tf
 from typing import Sequence, Tuple, Dict, Any
 from tensorflow.keras.activations import swish
 from tensorflow import Tensor
-from tensorflow.keras.layers import Conv2D, Layer, Input, concatenate, Lambda, Reshape
+from tensorflow.keras.layers import Conv2D, Layer, Input, concatenate, MaxPooling2D
 
 
-def rgb_input_layer(config: Dict[str, Any]):
+def rgb_input_layer(inputs: Layer):
     """
     Construct An Input Layer For RGB Bands
     :param config: A dictionary storing the script configuration
     :return: The input and output layers as the tuple (inputs, outputs)
     """
-    return preprocessing_layer(config["patch_size"], is_rgb=True)
+    rgb_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(inputs)
+    return rgb_conv
 
 
-def nir_input_layer(config: Dict[str, Any]):
+def nir_input_layer(inputs: Layer):
     """
     Construct An Input Layer For The NIR Bands
     :param config: A dictionary storing the script configuration
     :return: The input and output layers as the tuple (inputs, outputs)
     """
-    return preprocessing_layer(config["patch_size"], is_rgb=False)
+    nir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(inputs)
+    return nir_conv
 
 
 def swir_input_layer(config: Dict[str, Any]):
@@ -67,10 +69,10 @@ def preprocessing_layer(patch_size: int, is_rgb: bool = True) -> Tuple[Layer, La
     :return: The normalized tensor
     """
     inputs = Input(shape=(patch_size, patch_size, 3 if is_rgb else 1))
-    #threshold_layer = Lambda(lambda x: tf.clip_by_value(x, 0, 3000))(inputs)
-    #normalization_layer = Lambda(channel_wise_norm)(inputs if is_rgb else threshold_layer)
-    normalization_layer = Lambda(channel_wise_norm)(inputs)
-    return inputs, normalization_layer
+    # threshold_layer = Lambda(lambda x: tf.clip_by_value(x, 0, 3000))(inputs)
+    # normalization_layer = Lambda(channel_wise_norm)(inputs if is_rgb else threshold_layer)
+    # normalization_layer = Lambda(channel_wise_norm)(inputs)
+    return inputs
 
 
 def fusion_head(patch_size: int = 512, channels: Sequence[int] = None, rgb_output=False):

@@ -1,14 +1,11 @@
-import shutil
 import math
 import os
 from typing import Dict, Any, List
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler
-import numpy as np
 from models.utils import predict_batch
-from matplotlib import pyplot as plt
-from data_loader import DataLoader
-from config import get_bands, get_create_logs
+from backend.data_loader import DataLoader
+from config import get_create_logs
 
 
 class PredictionCallback(Callback):
@@ -34,7 +31,7 @@ def lr_scheduler(epoch, learning_rate):
         :param epoch: The current epoch
         :returns: The new learning rate
         """
-        return learning_rate * math.pow(0.5, epoch // 5)
+        return learning_rate * math.pow(0.5, epoch // 10)
 
 
 def get_callbacks(config: Dict[str, Any], val_data: List[int], model: Model, data_loader: DataLoader) -> List[Callback]:
@@ -45,7 +42,7 @@ def get_callbacks(config: Dict[str, Any], val_data: List[int], model: Model, dat
     """
     tensorboard = TensorBoard(log_dir=f"logs/tensorboard/{model.name}")
     csv = CSVLogger(filename=f"logs/csv/{model.name}.csv", append=True)
-    checkpoint = ModelCheckpoint(f"checkpoints/{model.name}", save_best_only=False)
+    checkpoint = ModelCheckpoint(f"checkpoints/{model.name}", save_best_only=False, monitor='val_loss', mode='min')
     prediction_logger = PredictionCallback(val_data, model, data_loader, config)
     learning_rate_scheduler = LearningRateScheduler(lr_scheduler)
     return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler] if get_create_logs(config) else [learning_rate_scheduler]

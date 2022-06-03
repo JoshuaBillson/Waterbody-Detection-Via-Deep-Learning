@@ -2,7 +2,7 @@ import os
 import sys
 import shutil
 import json
-from data_loader import DataLoader, analyze_dataset
+from backend.data_loader import DataLoader, analyze_dataset
 from config import get_timestamp
 import numpy as np
 import matplotlib.pyplot as plt

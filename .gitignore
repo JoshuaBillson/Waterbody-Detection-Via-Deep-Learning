@@ -8,3 +8,5 @@ checkpoints
 predictions/
 predictions/*
 validation/
+foo/
+test/
