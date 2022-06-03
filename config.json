@@ -5,8 +5,8 @@
   "show_samples": false,
   "timestamp": 1,
   "patch_size": 512,
-  "experiment_tag": "fusion",
-  "create_logs": false,
+  "experiment_tag": "baseline",
+  "create_logs": true,
   "train": true,
   "test": true,
   "hyperparameters": {
@@ -16,7 +16,8 @@
     "learning_rate": 0.00005,
     "optimizer": "adam",
     "batch_size": 4,
-    "epochs": 10 }
+    "epochs": 50 
+  }
 }
 
 

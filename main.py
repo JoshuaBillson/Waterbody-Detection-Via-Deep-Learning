@@ -55,7 +55,7 @@ def main():
     model.compile(loss=JaccardBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MIoU, Precision(), Recall()])
 
     # Get Callbacks
-    callbacks = get_callbacks(config, val_data.get_patch_indices(), model, loader)
+    callbacks = get_callbacks(config, val_data, model)
 
     # If Model Is Loaded From Checkpoint, Find The Last Epoch
     initial_epoch = 0
@@ -64,13 +64,10 @@ def main():
             last_line = csvfile.readlines()[-1]
             initial_epoch = int(last_line.split(",")[0]) + 1
 
-    # predict_batch(val_data.get_patch_indices(), loader, model, config, "foo")
-
     # Train Model
     print(f"EPOCH: {initial_epoch}")
     if config["train"]:
         model.fit(train_data, epochs=get_epochs(config)+initial_epoch, verbose=1, callbacks=callbacks, validation_data=val_data, initial_epoch=initial_epoch)
-        # model.fit(train_data, epochs=10, verbose=1, callbacks=callbacks, validation_data=val_data, initial_epoch=initial_epoch)
     
     if config["test"]:
         test_data.predict_batch(model, "test")

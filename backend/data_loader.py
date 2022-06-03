@@ -3,6 +3,7 @@ import os
 import math
 import random
 import shutil
+import pandas
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
@@ -293,7 +294,8 @@ class ImgSequence(KerasSequence):
         self.bands = ["RGB"] if bands is None else bands
         self.indices = np.array(range(lower_bound, upper_bound + 1))
         self.augment_data = augment_data
-        if shuffle:
+        self.shuffle = shuffle
+        if self.shuffle:
             np.random.shuffle(self.indices)
 
     def __len__(self) -> int:
@@ -335,7 +337,8 @@ class ImgSequence(KerasSequence):
         return np.array(swir_batch).astype("float32"), np.array(mask_batch).astype("float32")
     
     def on_epoch_end(self):
-        np.random.shuffle(self.indices)
+        if self.shuffle:
+            np.random.shuffle(self.indices)
     
     def get_patch_indices(self) -> List[int]:
         """
@@ -358,11 +361,13 @@ class ImgSequence(KerasSequence):
         # Create Directory To Save Predictions
         if directory not in os.listdir():
             os.mkdir(directory)
+        model_directory = f"{directory}/{model.name}"
         if model.name in os.listdir(directory):
-            shutil.rmtree(f"{directory}/{model.name}")
-        os.mkdir(f"{directory}/{model.name}")
+            shutil.rmtree(model_directory)
+        os.mkdir(model_directory)
 
         # Iterate Over All Patches In Batch
+        MIoUs = []
         for patch_index in self.indices:
 
             # Load Features And Mask
@@ -372,18 +377,31 @@ class ImgSequence(KerasSequence):
             prediction = model.predict(np.array([DataLoader.normalize_channels(features[0].astype("float32"))]))
 
             # Plot Prediction And Save To Disk
-            miou = MIoU(mask.astype("float32"), prediction)
+            MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])
             _, axs = plt.subplots(1, 3)
             axs[0].imshow(adjust_rgb(features[0]) if self.bands[0] == "RGB" else features[0])
             axs[0].set_title(self.bands[0])
             axs[1].imshow(mask)
             axs[1].set_title("Ground Truth")
             axs[2].imshow(np.where(prediction < 0.5, 0, 1)[0])
-            axs[2].set_title(f"{model.name} ({miou.numpy():.3f})")
+            axs[2].set_title(f"{model.name} ({MIoUs[-1][1]:.3f})")
             plt.tight_layout()
-            plt.savefig(f"{directory}/{model.name}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"{model_directory}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
             plt.cla()
             plt.close()
+        
+        # Save MIoU For Each Patch
+        summary = np.array(MIoUs)
+        df = pandas.DataFrame(summary[:, 1:], columns=["MIoU"], index=summary[:, 0].astype("int32"))
+        df.to_csv(f"{model_directory}/Evaluation.csv", index_label="patch")
+
+        # Evaluate Final Performance
+        results = model.evaluate(self)
+        for metric, value in zip(model.metrics_names, results):
+            print(metric, value)
+        df = pandas.DataFrame(np.reshape(np.array(results), (1, len(results))), columns=model.metrics_names)
+        df.to_csv(f"{model_directory}/Overview.csv", index=False)
+
 
     def augment_patch(self, patches: np.ndarray, mask: np.ndarray, threshold: float = 0.1) -> Tuple[np.ndarray]:
         while self._water_content(mask) < threshold:
@@ -451,8 +469,6 @@ class ImgSequence(KerasSequence):
         features = list(filter(lambda x: x is not None, (rgb_feature, nir_feature, swir_feature)))
 
         return features, mask
-    
-
 
 
 def create_patches(loader: DataLoader, show_image: bool = False) -> None:
