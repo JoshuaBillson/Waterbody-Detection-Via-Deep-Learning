@@ -1,21 +1,15 @@
 import os
 import sys
 import json
-import numpy as np
-from tensorflow.keras.metrics import MeanIoU, Recall, Precision
-from tensorflow.keras.losses import BinaryCrossentropy
-from tensorflow.keras.layers import Input
-from tensorflow.keras.models import Model
+from tensorflow.keras.metrics import Recall, Precision
 from tensorflow.keras.optimizers import Adam
-import tensorflow as tf
 from tensorflow.keras import mixed_precision
-
 from backend.metrics import MIoU
-from models.losses import DiceBCELoss, JaccardBCELoss
-from models.utils import predict_batch
-from backend.data_loader import DataLoader, create_patches, show_samples, load_dataset
+from models.losses import JaccardBCELoss
+from backend.data_loader import DataLoader, show_samples, load_dataset
+from generate_patches import generate_patches
 from models import get_model
-from config import get_epochs, get_model_type, get_timestamp, get_learning_rate
+from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate
 from backend.callbacks import get_callbacks, create_callback_dirs
 
 
@@ -29,7 +23,7 @@ def main():
 
     # Generate Patches
     if config["generate_patches"]:
-        create_patches(loader, config["show_data"])
+        generate_patches(loader, config["show_data"])
 
     # Show Samples Data
     if config["show_samples"]:
@@ -37,14 +31,6 @@ def main():
 
     # Load Dataset
     train_data, val_data, test_data = load_dataset(loader, config)
-    batch, masks = train_data[0]
-    sample = batch[0]
-    mask = masks[0]
-    print(sample.shape, mask.shape)
-    # train_data.augment_patch(sample, mask)
-    # print(batch.shape, sample.shape, np.mean(sample[:, :, 0]), np.std(sample[:, :, 0]))
-    # sample = batch[1]
-    # print(batch.shape, sample.shape, np.mean(sample[:, :, 0]), np.std(sample[:, :, 0]))
 
     # Create Callback Directories
     create_callback_dirs()
@@ -76,8 +62,8 @@ def main():
 if __name__ == '__main__':
     # Set Visible GPU
     args = sys.argv
-    GPU = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
-    os.environ["CUDA_VISIBLE_DEVICES"]=f"{GPU}"
+    GPUS = args[1:] if len(args) > 1 else ["0"] 
+    os.environ["CUDA_VISIBLE_DEVICES"]=f"{','.join(GPUS)}"
 
     # Use Mixed Precision
     mixed_precision.set_global_policy('mixed_float16')

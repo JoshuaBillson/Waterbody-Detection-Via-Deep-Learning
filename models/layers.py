@@ -2,7 +2,7 @@ import tensorflow as tf
 from typing import Sequence, Tuple, Dict, Any
 from tensorflow.keras.activations import swish
 from tensorflow import Tensor
-from tensorflow.keras.layers import Conv2D, Layer, Input, concatenate, MaxPooling2D
+from tensorflow.keras.layers import Conv2D, Layer, Input, concatenate, MaxPooling2D, UpSampling2D
 
 
 def rgb_input_layer(inputs: Layer):
@@ -25,13 +25,15 @@ def nir_input_layer(inputs: Layer):
     return nir_conv
 
 
-def swir_input_layer(config: Dict[str, Any]):
+def swir_input_layer(inputs: Layer):
     """
     Construct An Input Layer For The SWIR Bands
     :param config: A dictionary storing the script configuration
     :return: The input and output layers as the tuple (inputs, outputs)
     """
-    return preprocessing_layer(config["patch_size"] // 2, is_rgb=False)
+    swir_upsample = UpSampling2D(size=(2, 2))(inputs)
+    swir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(swir_upsample)
+    return swir_conv
 
 
 def rgb_nir_input_layer(rgb_inputs: Layer, nir_inputs: Layer):
@@ -44,6 +46,26 @@ def rgb_nir_input_layer(rgb_inputs: Layer, nir_inputs: Layer):
     nir_conv = Conv2D(8, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(nir_inputs)
     concat = concatenate([rgb_conv, nir_conv], axis=3)
     return concat
+
+
+def rgb_nir_swir_input_layer(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer):
+    """
+    Construct An Input Layer For RGB + NIR Bands
+    :param config: A dictionary storing the script configuration
+    :return: The input and output layers as the tuple (inputs, outputs)
+    """
+    # RGB Input
+    rgb_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(rgb_inputs)
+
+    # NIR Input
+    nir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(nir_inputs)
+
+    # SWIR Input
+    swir_upsample = UpSampling2D(size=(2, 2))(swir_inputs)
+    swir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(swir_upsample)
+    
+    # Concatenate SWIR, NIR, And RGB Inputs
+    return concatenate([rgb_conv, nir_conv, swir_conv], axis=3)
 
 
 @tf.function

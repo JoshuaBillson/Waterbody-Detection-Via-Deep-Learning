@@ -12,7 +12,7 @@ from models.transunet import transunet
 from models.swin_unet import swin_unet
 from models.att_unet import att_unet
 from models.fpn import fpn
-from config import get_model_type
+from backend.config import get_model_type
 
 
 def get_model(config: Dict[str, Any]) -> Model:

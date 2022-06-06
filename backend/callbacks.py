@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler
 from backend.data_loader import ImgSequence
-from config import get_create_logs
+from backend.config import get_create_logs
 
 
 class PredictionCallback(Callback):

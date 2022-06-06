@@ -4,8 +4,8 @@ import shutil
 from typing import Dict, Any, List
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose, Input
 from tensorflow.keras.models import Model
-from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer
-from config import get_model_type, get_bands, get_backbone, get_patch_size, get_experiment_tag
+from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer, rgb_nir_swir_input_layer
+from backend.config import get_model_type, get_bands, get_backbone, get_patch_size, get_experiment_tag
 from backend.data_loader import DataLoader
 from backend.metrics import MIoU
 import matplotlib.pyplot as plt
@@ -19,6 +19,8 @@ def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
     :return: The final model.
     """
     bands = get_bands(config)
+    if "RGB" in bands and "NIR" in bands and "SWIR" in bands:
+        return rgb_nir_swir_model(base_model, config)
     if "RGB" in bands and "NIR" in bands:
         return rgb_nir_model(base_model, config)
     elif "RGB" in bands:
@@ -39,6 +41,7 @@ def rgb_model(base_model: Model, config: Dict[str, Any]) -> Model:
     """
     # Replace Output Layer
     model = replace_output(base_model, config)
+    model.summary()
 
     # Replace Model Input
     patch_size = config["patch_size"]
@@ -77,8 +80,10 @@ def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    inputs = swir_input_layer(config)
-    outputs = model(inputs)
+    patch_size = config["patch_size"]
+    inputs = Input(shape=(patch_size // 2, patch_size // 2, 1))
+    x = swir_input_layer(inputs)
+    outputs = model(x)
     return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
@@ -101,21 +106,34 @@ def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     return Model(inputs=[rgb_inputs, nir_inputs], outputs=outputs, name=get_model_name(config))
 
 
+def rgb_nir_swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
+    """
+    Create An RGB + NIR Model From A Given Base Model And Configuration
+    :param base_model: The base model (U-Net, U2-Net, U-Net++, etc.) that we want to extend
+    :param config: The model configuration
+    :return: The final RGB + NIR model.
+    """
+    # Replace Output Layer
+    model = replace_output(base_model, config)
+
+    # Replace Model Input
+    patch_size = config["patch_size"]
+    rgb_inputs = Input(shape=(patch_size, patch_size, 3))
+    nir_inputs = Input(shape=(patch_size, patch_size, 1))
+    swir_inputs = Input(shape=(patch_size // 2, patch_size // 2, 1))
+    x = rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs)
+    outputs = model(x)
+    return Model(inputs=[rgb_inputs, nir_inputs, swir_inputs], outputs=outputs, name=get_model_name(config))
+
+
 def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:
     """
-    Replace the output layer of the given base model. If the input bands include SWIR, we need to upsample the mask by a factor of 2
+    Replace the output layer of the given base model. 
     :param base_model: The base model (U-Net, U2-Net, U-Net++, etc.) whose output layer we want to replace
     :param config: The model configuration
     :return: The final model.
     """
-    if False:
-        x = base_model.layers[-3].output
-        up_sample = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same')(x)
-        outputs = Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(up_sample)  # create new last layer
-        model = Model(inputs=base_model.input, outputs=outputs, name=f"{get_model_type(config)}_base")
-        model.summary()
-        return model
-    x = base_model.layers[-3].output
+    x = base_model.layers[-2].output
     outputs = Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
     return Model(inputs=base_model.input, outputs=outputs, name=f"{get_model_type(config)}_base")
 

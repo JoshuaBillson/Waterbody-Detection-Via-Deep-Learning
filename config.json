@@ -11,7 +11,7 @@
   "test": true,
   "hyperparameters": {
     "model": "unet",
-    "bands": ["RGB", "NIR"],
+    "bands": ["NIR"],
     "backbone": null,
     "learning_rate": 0.00005,
     "optimizer": "adam",

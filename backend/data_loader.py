@@ -1,4 +1,3 @@
-import imp
 import os
 import math
 import random
@@ -97,67 +96,6 @@ class DataLoader:
         return features, np.array(masks), np.array(indices)
                 
 
-    def create_rgb_and_nir_patches(self, show_image: bool = False) -> None:
-        """
-        Creates RGB and NIR patches from the original image and saves them to disk
-        :param show_imgage: If this parameter is set to True, we plot the original RGB and NIR image for visualization purposes
-        """
-        # Read Image
-        img = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/rgb_nir/rgb_nir.tif")
-
-        # Show RGB Image
-        if show_image:
-            rgb_img = img[..., 0:3]
-            img_scaled = adjust_rgb(rgb_img, gamma=0.2)
-            plt.imshow(img_scaled)
-            plt.savefig(f"images/rgb.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
-            plt.show()
-
-            plt.imshow(self._threshold_channel(img[..., 3:]))
-            plt.savefig(f"images/nir.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
-            plt.show()
-
-        # Partition Image Into Patches
-        patches = self._segment_image(img)
-        rgb_patches = patches[..., 0:3]
-        nir_patches = patches[..., 3:]
-        self._write_patches(nir_patches, "nir")
-        self._write_patches(rgb_patches, "rgb")
-
-    def create_swir_patches(self, show_img: bool = False) -> None:
-        """
-        Creates SWIR patches from the original image and saves them to disk
-        :param show_img: If this parameter is set to True, we plot the original SWIR image for visualization purposes
-        """
-        # Open File
-        img = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/swir/swir.tif")
-
-        # Plot Image
-        if show_img:
-            plt.imshow(self._threshold_channel(img))
-            plt.savefig(f"images/swir.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
-            plt.show()
-
-        # Partition Image Into Patches
-        patches = self._segment_image(img, is_swir=True).astype("uint16")
-        self._write_patches(patches, "swir")
-
-    def create_mask_patches(self, show_mask: bool = False) -> None:
-        """
-        Creates mask patches from the original mask and saves them to disk
-        :param show_mask: If this parameter is set to True, we plot the mask for visualization purposes
-        """
-        # Open File
-        mask = self.read_image("data/label.tif")
-
-        # Plot Image
-        if show_mask:
-            plt.imshow(mask)
-            plt.savefig(f"images/mask.{self.timestamp}.png", dpi=5000, bbox_inches='tight')
-
-        # Return Patches
-        patches = self._segment_image(np.clip(mask, 0, 1))
-        self._write_patches(patches, "mask")
 
     @staticmethod
     def read_image(filename: str, preprocess_img: bool = False) -> np.ndarray:
@@ -201,8 +139,8 @@ class DataLoader:
         for rgb_sample, nir_sample, swir_sample, mask_sample, ax in zip(rgb_samples, nir_samples, swir_samples, mask_samples, axs):
             ax[0].imshow(mask_sample)
             ax[1].imshow(adjust_rgb(rgb_sample))
-            ax[2].imshow(DataLoader._threshold_channel(nir_sample))
-            ax[3].imshow(DataLoader._threshold_channel(swir_sample))
+            ax[2].imshow(DataLoader.threshold_channel(nir_sample))
+            ax[3].imshow(DataLoader.threshold_channel(swir_sample))
 
         # Save Figure
         plt.savefig(f"images/samples.{self.timestamp}.png", dpi=2500, bbox_inches='tight')
@@ -236,63 +174,16 @@ class DataLoader:
         return img
 
     @staticmethod
-    def _threshold_channel(channel, threshold=3000):
+    def threshold_channel(channel, threshold=3000):
         return np.clip(channel, 0, threshold)
-
-    def _write_patches(self, patches, image_type):
-        # Create Patches Directory
-        timestamp_directory = f"data/{self.folders.get(self.timestamp, 1)}"
-        if "patches" not in os.listdir(timestamp_directory):
-            os.mkdir(f"{timestamp_directory}/patches")
-
-        # Create Directory For Patches Of The Appropriate Type (RGB, NIR, SWIR, Mask)
-        patches_directory = f"{timestamp_directory}/patches"
-        img_directory = f"{patches_directory}/{image_type}"
-        if image_type in os.listdir(patches_directory):
-            shutil.rmtree(img_directory)
-        os.mkdir(img_directory)
-
-        # Save Patches To Disk
-        for patch_number, patch in enumerate(patches):
-            filename = f"{img_directory}/{image_type}.{patch_number + 1}.tif"
-            self.save_image(patch, filename)
-
-    def _segment_image(self, img, is_swir=False):
-        # Compute Dimentions
-        tile_size = self.tile_size if not is_swir else self.tile_size // 2
-        img_size = min(img.shape[0], img.shape[1])
-        num_tiles = img_size // tile_size
-
-        # Construct Patches
-        patches = []
-        for x in np.arange(start=0, stop=num_tiles*tile_size, step=tile_size):
-            for y in np.arange(start=0, stop=num_tiles*tile_size, step=tile_size):
-                tile = img[y:y+tile_size, x:x+tile_size, :]
-                patches += self._create_patches(tile)
-
-        # Return Patches
-        return np.array(patches)
-
-    @staticmethod
-    def _create_patches(tile: np.ndarray):
-        patches = []
-        patch_size = tile.shape[0] // 2
-        for x in (0, 0.5, 1):
-            for y in (0, 0.5, 1):
-                top = int(y*patch_size)
-                bottom = top + patch_size
-                left = int(x*patch_size)
-                right = left + patch_size
-                patches.append(tile[top:bottom, left:right, :])
-        return patches
 
 
 class ImgSequence(KerasSequence):
-    def __init__(self, data_loader: DataLoader, lower_bound: int, upper_bound: int, batch_size: int = 32, bands: Sequence[str] = None, augment_data: bool = False, shuffle: bool = True):
+    def __init__(self, data_loader: DataLoader, patches: List[int], batch_size: int = 32, bands: Sequence[str] = None, augment_data: bool = False, shuffle: bool = True):
         self.data_loader = data_loader
         self.batch_size = batch_size
         self.bands = ["RGB"] if bands is None else bands
-        self.indices = np.array(range(lower_bound, upper_bound + 1))
+        self.indices = patches
         self.augment_data = augment_data
         self.shuffle = shuffle
         if self.shuffle:
@@ -312,7 +203,7 @@ class ImgSequence(KerasSequence):
 
             # Augment Data
             if self.augment_data:
-                features, mask = self.augment_patch(features, mask)
+                features, mask = self.augment_patch(features, mask, 0)
             
             # Add Features To Batch
             mask_batch.append(mask)
@@ -379,12 +270,12 @@ class ImgSequence(KerasSequence):
             # Plot Prediction And Save To Disk
             MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])
             _, axs = plt.subplots(1, 3)
-            axs[0].imshow(adjust_rgb(features[0]) if self.bands[0] == "RGB" else features[0])
+            axs[0].imshow(adjust_rgb(features[0], gamma=0.5) if self.bands[0] == "RGB" else features[0])
             axs[0].set_title(self.bands[0])
             axs[1].imshow(mask)
             axs[1].set_title("Ground Truth")
             axs[2].imshow(np.where(prediction < 0.5, 0, 1)[0])
-            axs[2].set_title(f"{model.name} ({MIoUs[-1][1]:.3f})")
+            axs[2].set_title(f"Prediction ({MIoUs[-1][1]:.3f})")
             plt.tight_layout()
             plt.savefig(f"{model_directory}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
             plt.cla()
@@ -401,51 +292,55 @@ class ImgSequence(KerasSequence):
             print(metric, value)
         df = pandas.DataFrame(np.reshape(np.array(results), (1, len(results))), columns=model.metrics_names)
         df.to_csv(f"{model_directory}/Overview.csv", index=False)
+    
+    def show_agumentation(self):
+        for patch in self.indices:
+            # Load Features And Mask
+            features, mask = self._get_features(patch)
+            self.augment_patch(features, mask, patch)
 
-
-    def augment_patch(self, patches: np.ndarray, mask: np.ndarray, threshold: float = 0.1) -> Tuple[np.ndarray]:
-        while self._water_content(mask) < threshold:
-
-            plt.imshow(mask)
-            plt.savefig("foo/mask.png", dpi=1000)
-            plt.show()
+    def augment_patch(self, patches: np.ndarray, mask: np.ndarray, index: int, threshold: float = 0.1) -> Tuple[np.ndarray]:
+        # while self._water_content(mask) < threshold:
+        if self._water_content(mask) == 0.0:
 
             # Get Source Mask
-            source_index = random.randint(min(self.indices), max(self.indices))
-            source_mask = self.data_loader.get_mask(source_index)
-            plt.imshow(source_mask)
-            plt.savefig("foo/source_mask.png", dpi=1000)
-            plt.show()
+            source_mask = np.zeros((512, 512, 3))
+            while self._water_content(source_mask) < 0.05:
+                source_index = random.randint(min(self.indices), max(self.indices))
+                source_mask = self.data_loader.get_mask(source_index)
 
             # Get Source Features
             methods = {"RGB": self.data_loader.get_rgb_features, "NIR": self.data_loader.get_nir_features, "SWIR": self.data_loader.get_swir_features}
             for patch, band in zip(patches, self.bands):
-                plt.imshow(patch)
-                plt.savefig(f"foo/patch_{band}.png", dpi=1000)
-                plt.show()
-
                 source_feature = methods[band](source_index, preprocess_img=False)
-                plt.imshow(source_feature)
-                plt.savefig(f"foo/source_patch_{band}.png", dpi=1000)
-                plt.show()
 
                 # Extract Waterbody From Source Feature 
                 waterbody = source_mask * source_feature
 
                 # Remove Waterbody Region From Destination Feature
-                patch *= np.where(source_mask == 1, 0, 1).astype("uint16")
+                augmented_patch = patch * np.where(source_mask == 1, 0, 1).astype("uint16")
 
                 # Transfer Waterbody To Destination Feature Map
-                patch += waterbody
-                plt.imshow(patch)
-                plt.savefig(f"foo/final_patch_{band}.png", dpi=1000)
+                augmented_patch += waterbody
+                
+                # Plot Augmented Patch
+                _, axs = plt.subplots(1, 6)
+                axs[0].imshow(source_mask)
+                axs[0].set_title("Src. Mask")
+                axs[1].imshow(adjust_rgb(source_feature, gamma=0.5) if band == "RGB" else source_feature)
+                axs[1].set_title("Src. Features")
+                axs[2].imshow(mask)
+                axs[2].set_title("Dest. Mask")
+                axs[3].imshow(adjust_rgb(patch, gamma=0.5) if band == "RGB" else patch)
+                axs[3].set_title("Dest. Features")
+                axs[4].imshow(np.where((mask + source_mask) >= 1, 1, 0).astype("uint16"))
+                axs[4].set_title("Final Mask")
+                axs[5].imshow(adjust_rgb(augmented_patch, gamma=0.5) if band == "RGB" else augmented_patch)
+                axs[5].set_title("Final Features")
+                plt.savefig(f"transfers/transfer_{index}_{band}.png", dpi=1000)
                 plt.show()
 
             mask = np.where((mask + source_mask) >= 1, 1, 0).astype("uint16")
-            plt.imshow(mask)
-            plt.savefig("foo/final_mask.png", dpi=1000)
-            plt.show()
-            break
 
         return patches, mask
 
@@ -471,18 +366,6 @@ class ImgSequence(KerasSequence):
         return features, mask
 
 
-def create_patches(loader: DataLoader, show_image: bool = False) -> None:
-    """
-    Generate the patches and save them to disk.
-    :param loader: The DataLoader that will be used to read the patches from disk
-    :param show_image: If True, we will visualize the original images from which the patches are generated
-    :returns: Nothing
-    """
-    loader.create_rgb_and_nir_patches(show_image=show_image)
-    loader.create_swir_patches(show_img=show_image)
-    loader.create_mask_patches(show_mask=show_image)
-
-
 def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
     """
     Load the training, validation, and test datasets
@@ -494,9 +377,11 @@ def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, 
     batch_size = config["hyperparameters"]["batch_size"]
     lower_bound, upper_bound = loader.get_bounds()
     assert lower_bound == 1 and upper_bound == 3600, f"Error: Bounds Must Be Between 1 and 3600 (Got [{lower_bound}, {upper_bound}])"
-    train_data = ImgSequence(loader, 1, 2700, bands=bands, batch_size=batch_size)
-    val_data = ImgSequence(loader, 2701, 3000, bands=bands, batch_size=batch_size, shuffle=False)
-    test_data = ImgSequence(loader, 3001, 3600, bands=bands, batch_size=batch_size, shuffle=False)
+    patches = np.array(range(1, 3601))
+    np.random.shuffle(patches)
+    train_data = ImgSequence(loader, patches[0:2700], bands=bands, batch_size=batch_size)
+    val_data = ImgSequence(loader, patches[2700:3000], bands=bands, batch_size=batch_size, shuffle=False)
+    test_data = ImgSequence(loader, patches[3000:3600], bands=bands, batch_size=batch_size, shuffle=False)
     return train_data, val_data, test_data
 
 
@@ -511,58 +396,3 @@ def show_samples(loader: DataLoader) -> None:
         swir_samples.append(swir)
         mask_samples.append(mask)
     loader.plot_samples(rgb_samples, nir_samples, swir_samples, mask_samples)
-
-
-def analyze_dataset(loader: DataLoader) -> None:
-    """
-    Perform statistical analysis of the dataset
-    :param loader: The DataLoader that will be used to read the patches from disk
-    :returns: Nothing
-    """
-    # Analyze Initial Mask
-    mask = np.clip(loader.read_image("data/label.tif"), a_min=0, a_max=1)
-    total_pixels = mask.size
-    water_pixels = np.sum(mask)
-    print("\nMASK\n")
-    print(f"Total Pixels: {total_pixels}\nWater Pixels: {water_pixels}\nWater Percentage: {round(water_pixels / total_pixels * 100.0, ndigits=2)}%")
-
-    # Analyze Patches
-    water_pixels_hist = []
-    lower_bound, upper_bound = loader.get_bounds()
-    for patch in range(lower_bound, upper_bound+1):
-        mask_patch = loader.get_mask(patch)
-        total_pixels = mask_patch.size
-        water_pixels = np.sum(mask_patch)
-        water_percentage = water_pixels / total_pixels * 100.0
-        water_pixels_hist.append(water_percentage)
-    
-    # Generate Histogram For All Patches
-    stats = plt.hist(water_pixels_hist, bins=np.arange(0.0, 51.0, 2.5))
-    plt.title("All Patches")
-    plt.xlabel("Water Pixels (%)")
-    plt.ylabel("Patches (Count)")
-    plt.savefig("images/histogram_all.png", bbox_inches='tight')
-    plt.cla()
-    
-    # Summarize Histogram Statistics
-    print("\nSUMMARIZE PATCH HISTOGRAM\n")
-    for count, b in zip(stats[0], stats[1]):
-        print(f"[{b}, {b+2.5}): {int(count)}")
-    
-
-    # Generate Histogram For Patches With At Least 5% Water
-    stats = plt.hist(list(filter(lambda x: x >= 5.0, water_pixels_hist)), bins=np.arange(5.0, 51.0, 2.5))
-    plt.title("Patches With At Least 5% Water")
-    plt.xlabel("Water Pixels (%)")
-    plt.ylabel("Patches (Count)")
-    plt.savefig("images/histogram_over5.png", bbox_inches='tight')
-    plt.cla()
-
-    # Additional Statistics
-    print("\nADDITIONAL STATISTICS\n")
-    print(f"Patches With No Water: {len(list(filter(lambda x: x == 0.0, water_pixels_hist)))}")
-    print(f"Patches With Water: {len(list(filter(lambda x: x > 0.0, water_pixels_hist)))}")
-    print(f"Patches With Less Than 5% Water: {len(list(filter(lambda x: x < 5.0, water_pixels_hist)))}")
-    print(f"Patches With Over 5% Water: {len(list(filter(lambda x: x >= 5.0, water_pixels_hist)))}")
-    print(f"Patches With Less Than 10% Water: {len(list(filter(lambda x: x < 10.0, water_pixels_hist)))}")
-    print(f"Patches With Over 10% Water: {len(list(filter(lambda x: x >= 10.0, water_pixels_hist)))}")

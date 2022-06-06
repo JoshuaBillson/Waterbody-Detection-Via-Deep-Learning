@@ -1,6 +1,16 @@
 from typing import Dict, Any, List, Tuple
 
 
+def get_timestamp_directory(config: Dict[str, Any]) -> str:
+    """
+    Get the input bands from the project config
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: The list of bands we want to use
+    """
+    folders = {1: "2018.04", 2: "2018.12", 3: "2019.02"}
+    return folders[get_timestamp(config)]
+
+
 def get_bands(config: Dict[str, Any]) -> List[str]:
     """
     Get the input bands from the project config

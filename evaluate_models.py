@@ -11,7 +11,7 @@ from models.losses import DiceBCELoss
 from data_loader import DataLoader, create_patches, show_samples, load_dataset
 from models.layers import preprocessing_layer
 from models import get_model
-from config import get_epochs, get_model_type, get_timestamp, get_learning_rate
+from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate
 from callbacks import get_callbacks, create_callback_dirs
 
 def test_preprocessing_layer():
