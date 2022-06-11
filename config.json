@@ -3,7 +3,7 @@
   "generate_patches": false,
   "show_data": false,
   "show_samples": false,
-  "timestamp": 1,
+  "timestamp": 2,
   "patch_size": 512,
   "experiment_tag": "baseline",
   "create_logs": true,
@@ -11,7 +11,7 @@
   "test": true,
   "hyperparameters": {
     "model": "unet",
-    "bands": ["NIR"],
+    "bands": ["RGB", "NIR"],
     "backbone": null,
     "learning_rate": 0.00005,
     "optimizer": "adam",

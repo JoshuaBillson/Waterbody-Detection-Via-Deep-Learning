@@ -147,16 +147,16 @@ def create_patches(tile: np.ndarray) -> List[np.array]:
     return patches
 
 
-def _create_patches(loader: DataLoader, show_image: bool = False) -> None:
+def _create_patches(config: Dict[str, Any], show_image: bool = False) -> None:
     """
     Generate the patches and save them to disk.
-    :param loader: The DataLoader that will be used to read the patches from disk
+    :param config: The script configuration stored as a dictionary; typically read from an external file
     :param show_image: If True, we will visualize the original images from which the patches are generated
     :returns: Nothing
     """
-    loader.create_rgb_and_nir_patches(show_image=show_image)
-    loader.create_swir_patches(show_img=show_image)
-    loader.create_mask_patches(show_mask=show_image)
+    create_swir_patches(config, show_img=show_image)
+    create_rgb_and_nir_patches(config, show_img=show_image)
+    create_mask_patches(config, show_mask=show_image)
 
 
 def create_batches(config: Dict[str, Any]) -> None:
@@ -189,16 +189,18 @@ def create_batches(config: Dict[str, Any]) -> None:
         batch_file.write(json.dumps({"train": list(train_data), "validation": list(val_data), "test": list(test_data)}))
 
 
-def generate_patches():
+def generate_patches(loader: DataLoader = None, config: Dict[str, Any] = None):
     # Get Project Configuration
-    with open('config.json') as f:
-        config = json.loads(f.read())
+    if config is None:
+        with open('config.json') as f:
+            config = json.loads(f.read())
 
     # Create Data Loader
-    loader = DataLoader(timestamp=get_timestamp(config))
+    if loader is None:
+        loader = DataLoader(timestamp=get_timestamp(config))
 
     # Generate Patches
-    _create_patches(loader, config["show_data"])
+    _create_patches(config, True)
     create_batches(config)
 
 

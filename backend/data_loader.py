@@ -180,14 +180,26 @@ class DataLoader:
 
 class ImgSequence(KerasSequence):
     def __init__(self, data_loader: DataLoader, patches: List[int], batch_size: int = 32, bands: Sequence[str] = None, augment_data: bool = False, shuffle: bool = True):
+        # Initialize Member Variables
         self.data_loader = data_loader
         self.batch_size = batch_size
         self.bands = ["RGB"] if bands is None else bands
         self.indices = patches
         self.augment_data = augment_data
         self.shuffle = shuffle
+
+        # Shuffle Patches
         if self.shuffle:
             np.random.shuffle(self.indices)
+
+        # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
+        self.transfer_patches = []
+        if self.augment_data:
+            for source_index in self.indices:
+                source_mask = self.data_loader.get_mask(source_index)
+                if self._water_content(source_mask) > 10:
+                    print(source_index, self._water_content(source_mask))
+                    self.transfer_patches.append(source_index)
 
     def __len__(self) -> int:
         return math.ceil(len(self.indices) / self.batch_size)
@@ -203,7 +215,7 @@ class ImgSequence(KerasSequence):
 
             # Augment Data
             if self.augment_data:
-                features, mask = self.augment_patch(features, mask, 0)
+                features, mask = self.augment_patch(features, mask)
             
             # Add Features To Batch
             mask_batch.append(mask)
@@ -295,19 +307,17 @@ class ImgSequence(KerasSequence):
     
     def show_agumentation(self):
         for patch in self.indices:
-            # Load Features And Mask
             features, mask = self._get_features(patch)
-            self.augment_patch(features, mask, patch)
+            self.augment_patch(features, mask, index=patch, show_examples=True)
 
-    def augment_patch(self, patches: np.ndarray, mask: np.ndarray, index: int, threshold: float = 0.1) -> Tuple[np.ndarray]:
+    def augment_patch(self, patches: np.ndarray, mask: np.ndarray, index: int = 1, show_examples: bool = False, threshold: float = 0.0) -> Tuple[np.ndarray]:
         # while self._water_content(mask) < threshold:
-        if self._water_content(mask) == 0.0:
+        if self._water_content(mask) <= threshold:
 
             # Get Source Mask
-            source_mask = np.zeros((512, 512, 3))
-            while self._water_content(source_mask) < 0.05:
-                source_index = random.randint(min(self.indices), max(self.indices))
-                source_mask = self.data_loader.get_mask(source_index)
+            assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
+            source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
+            source_mask = self.data_loader.get_mask(source_index)
 
             # Get Source Features
             methods = {"RGB": self.data_loader.get_rgb_features, "NIR": self.data_loader.get_nir_features, "SWIR": self.data_loader.get_swir_features}
@@ -324,21 +334,23 @@ class ImgSequence(KerasSequence):
                 augmented_patch += waterbody
                 
                 # Plot Augmented Patch
-                _, axs = plt.subplots(1, 6)
-                axs[0].imshow(source_mask)
-                axs[0].set_title("Src. Mask")
-                axs[1].imshow(adjust_rgb(source_feature, gamma=0.5) if band == "RGB" else source_feature)
-                axs[1].set_title("Src. Features")
-                axs[2].imshow(mask)
-                axs[2].set_title("Dest. Mask")
-                axs[3].imshow(adjust_rgb(patch, gamma=0.5) if band == "RGB" else patch)
-                axs[3].set_title("Dest. Features")
-                axs[4].imshow(np.where((mask + source_mask) >= 1, 1, 0).astype("uint16"))
-                axs[4].set_title("Final Mask")
-                axs[5].imshow(adjust_rgb(augmented_patch, gamma=0.5) if band == "RGB" else augmented_patch)
-                axs[5].set_title("Final Features")
-                plt.savefig(f"transfers/transfer_{index}_{band}.png", dpi=1000)
-                plt.show()
+                if show_examples:
+                    _, axs = plt.subplots(1, 6)
+                    axs[0].imshow(source_mask)
+                    axs[0].set_title("Src. Mask", fontsize=6)
+                    axs[1].imshow(adjust_rgb(source_feature, gamma=0.5) if band == "RGB" else source_feature)
+                    axs[1].set_title("Src. Features", fontsize=6)
+                    axs[2].imshow(mask)
+                    axs[2].set_title("Dest. Mask", fontsize=6)
+                    axs[3].imshow(adjust_rgb(patch, gamma=0.5) if band == "RGB" else patch)
+                    axs[3].set_title("Dest. Features", fontsize=6)
+                    axs[4].imshow(np.where((mask + source_mask) >= 1, 1, 0).astype("uint16"))
+                    axs[4].set_title("Final Mask", fontsize=6)
+                    axs[5].imshow(adjust_rgb(augmented_patch, gamma=0.5) if band == "RGB" else augmented_patch)
+                    axs[5].set_title("Final Features", fontsize=6)
+                    plt.tight_layout()
+                    plt.savefig(f"faz/transfer_{index}_{band}.png", dpi=1000)
+                    plt.close()
 
             mask = np.where((mask + source_mask) >= 1, 1, 0).astype("uint16")
 

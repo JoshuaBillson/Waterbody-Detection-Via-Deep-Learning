@@ -9,7 +9,7 @@ from models.losses import JaccardBCELoss
 from backend.data_loader import DataLoader, show_samples, load_dataset
 from generate_patches import generate_patches
 from models import get_model
-from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate
+from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate, get_timestamp_directory
 from backend.callbacks import get_callbacks, create_callback_dirs
 
 
@@ -22,8 +22,8 @@ def main():
     loader = DataLoader(timestamp=get_timestamp(config))
 
     # Generate Patches
-    if config["generate_patches"]:
-        generate_patches(loader, config["show_data"])
+    if "patches" not in os.listdir(f"data/{get_timestamp_directory(config)}") or config["generate_patches"]:
+        generate_patches(loader=loader, config=config)
 
     # Show Samples Data
     if config["show_samples"]:
