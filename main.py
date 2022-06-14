@@ -4,7 +4,7 @@ import json
 from tensorflow.keras.metrics import Recall, Precision
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import mixed_precision
-from backend.metrics import MIoU
+from backend.metrics import MIoU, CombinedMIoU
 from models.losses import JaccardBCELoss
 from backend.data_loader import DataLoader, show_samples, load_dataset
 from generate_patches import generate_patches
@@ -38,7 +38,7 @@ def main():
     # Create Model
     model = get_model(config)
     model.summary()
-    model.compile(loss=JaccardBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MIoU, Precision(), Recall()])
+    model.compile(loss=JaccardBCELoss, optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[CombinedMIoU, Precision(), Recall()])
 
     # Get Callbacks
     callbacks = get_callbacks(config, val_data, model)

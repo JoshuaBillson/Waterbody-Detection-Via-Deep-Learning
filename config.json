@@ -3,20 +3,21 @@
   "generate_patches": false,
   "show_data": false,
   "show_samples": false,
-  "timestamp": 2,
+  "timestamp": 1,
   "patch_size": 512,
-  "experiment_tag": "baseline",
-  "create_logs": true,
-  "train": true,
+  "experiment_tag": "waterbody_transfer_augmentation_50",
+  "create_logs": false,
+  "train": false,
   "test": true,
   "hyperparameters": {
-    "model": "unet",
-    "bands": ["RGB", "NIR"],
+    "model": "unet_deep.nir.waterbody_transfer.0",
+    "bands": ["NIR"],
     "backbone": null,
     "learning_rate": 0.00005,
     "optimizer": "adam",
     "batch_size": 4,
-    "epochs": 50 
+    "epochs": 50, 
+    "apply_transfer": true
   }
 }
 

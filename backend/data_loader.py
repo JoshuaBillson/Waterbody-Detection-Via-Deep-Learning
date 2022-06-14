@@ -1,5 +1,6 @@
 import os
 import math
+import json
 import random
 import shutil
 import pandas
@@ -7,10 +8,12 @@ import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Tuple, Sequence, List, Dict, Any
+from tensorflow.image import flip_up_down, flip_left_right, rot90
 from tensorflow.keras.utils import Sequence as KerasSequence
 from tensorflow.keras.models import Model
 from backend.utils import adjust_rgb
-from backend.metrics import MIoU
+from backend.metrics import MIoU, CombinedMIoU
+from backend.config import get_patch_size, get_waterbody_transfer
 
 
 class DataLoader:
@@ -51,51 +54,6 @@ class DataLoader:
         :return: The mark of the matching patch.
         """
         return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/mask/mask.{patch_number}.tif")
-
-    def get_bounds(self) -> Tuple[int, int]:
-        """Returns the indices of the lowest and highest numbered patches respectively."""
-        files = os.listdir(f"data/{self.folders.get(self.timestamp, 1)}/patches/mask")
-        min_patch = min([int(x.split(".")[1]) for x in files])
-        max_patch = max([int(x.split(".")[1]) for x in files])
-        return min_patch, max_patch
-
-    def get_batch(self, batch: List[int], bands: List[str], threshold: float = 0.0) -> Tuple[List[np.ndarray], np.ndarray, np.ndarray]:
-        masks, rgb_features, nir_features, swir_features, indices = [], [], [], [], []
-        for patch in batch:
-            mask = self.get_mask(patch)
-            
-            # Return Patches Whose Water Content Meets The Threshold 
-            if (np.sum(mask) / mask.size * 100.0) >= threshold:
-
-                # Read Mask And Index
-                masks.append(mask)
-
-                # Store Patch Index
-                indices.append(patch)
-
-                # Read RGB Features
-                if "RGB" in bands:
-                    rgb_features.append(self.get_rgb_features(patch))
-
-                # Read NIR Features
-                if "NIR" in bands:
-                    nir_features.append(self.get_nir_features(patch))
-
-                # Read SWIR Features
-                if "SWIR" in bands:
-                    swir_features.append(self.get_swir_features(patch))
-        
-        # Return Batch
-        features = []
-        if "RGB" in bands:
-            features.append(np.array(rgb_features).astype("float32"))
-        if "NIR" in bands:
-            features.append(np.array(nir_features).astype("float32"))
-        if "SWIR" in bands:
-            features.append(np.array(swir_features).astype("float32"))
-        return features, np.array(masks), np.array(indices)
-                
-
 
     @staticmethod
     def read_image(filename: str, preprocess_img: bool = False) -> np.ndarray:
@@ -192,52 +150,28 @@ class ImgSequence(KerasSequence):
         if self.shuffle:
             np.random.shuffle(self.indices)
 
-        # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
-        self.transfer_patches = []
-        if self.augment_data:
-            for source_index in self.indices:
-                source_mask = self.data_loader.get_mask(source_index)
-                if self._water_content(source_mask) > 10:
-                    print(source_index, self._water_content(source_mask))
-                    self.transfer_patches.append(source_index)
-
     def __len__(self) -> int:
         return math.ceil(len(self.indices) / self.batch_size)
 
     def __getitem__(self, idx):
         # Create Batch
-        rgb_batch, nir_batch, swir_batch, mask_batch = [], [], [], []
+        feature_batches = {"RGB": [], "NIR": [], "SWIR": [], "mask": []}
         batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
         for b in batch:
 
             # Get Mask And Features For Patch b
-            features, mask = self._get_features(b)
+            features = self._get_features(b)
 
             # Augment Data
             if self.augment_data:
-                features, mask = self.augment_patch(features, mask)
+                self.augment_features(features)
             
             # Add Features To Batch
-            mask_batch.append(mask)
-            if "RGB" in self.bands:
-                rgb_batch.append(DataLoader.normalize_channels(features[0].astype("float32")))
-            if "NIR" in self.bands:
-                nir_batch.append(DataLoader.normalize_channels(features[1 if "RGB" in self.bands else 0].astype("float32")))
-            if "SWIR" in self.bands:
-                swir_batch.append(DataLoader.normalize_channels(features[len(self.bands) - 1].astype("float32")))
+            for key, val in features.items():
+                feature_batches[key].append(DataLoader.normalize_channels(val.astype("float32")) if key != "mask" else val)
 
         # Return Batch
-        if all([band in self.bands for band in ["RGB", "NIR", "SWIR"]]):
-            return [np.array(x).astype("float32") for x in [rgb_batch, nir_batch, swir_batch]], np.array(mask_batch).astype("float32")
-        elif all([band in self.bands for band in ["RGB", "NIR"]]):
-            return [np.array(x).astype("float32") for x in [rgb_batch, nir_batch]], np.array(mask_batch).astype("float32")
-        elif all([band in self.bands for band in ["RGB", "SWIR"]]):
-            return [np.array(x).astype("float32") for x in [rgb_batch, swir_batch]], np.array(mask_batch).astype("float32")
-        elif "RGB" in self.bands:
-            return np.array(rgb_batch).astype("float32"), np.array(mask_batch).astype("float32")
-        elif "NIR" in self.bands:
-            return np.array(nir_batch).astype("float32"), np.array(mask_batch).astype("float32")
-        return np.array(swir_batch).astype("float32"), np.array(mask_batch).astype("float32")
+        return [np.array(feature_batches[band]).astype("float32") for band in ("RGB", "NIR", "SWIR") if len(feature_batches[band]) > 0], np.array(feature_batches["mask"]).astype("float32")
     
     def on_epoch_end(self):
         if self.shuffle:
@@ -274,15 +208,17 @@ class ImgSequence(KerasSequence):
         for patch_index in self.indices:
 
             # Load Features And Mask
-            features, mask = self._get_features(patch_index)
+            features = self._get_features(patch_index)
+            mask = features["mask"]
         
             # Get Prediction
-            prediction = model.predict([np.array([DataLoader.normalize_channels(feature.astype("float32"))]) for feature in features])
+            prediction = model.predict([np.array([DataLoader.normalize_channels(features[band].astype("float32"))]) for band in self.bands])
 
             # Plot Prediction And Save To Disk
-            MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])
+            primary_band = self.bands[0]
+            MIoUs.append([patch_index, CombinedMIoU(mask.astype("float32"), prediction).numpy()])
             _, axs = plt.subplots(1, 3)
-            axs[0].imshow(adjust_rgb(features[0], gamma=0.5) if self.bands[0] == "RGB" else features[0])
+            axs[0].imshow(adjust_rgb(features[primary_band], gamma=0.5) if primary_band == "RGB" else features[primary_band])
             axs[0].set_title(self.bands[0])
             axs[1].imshow(mask)
             axs[1].set_title("Ground Truth")
@@ -305,77 +241,102 @@ class ImgSequence(KerasSequence):
         df = pandas.DataFrame(np.reshape(np.array(results), (1, len(results))), columns=model.metrics_names)
         df.to_csv(f"{model_directory}/Overview.csv", index=False)
     
-    def show_agumentation(self):
-        for patch in self.indices:
-            features, mask = self._get_features(patch)
-            self.augment_patch(features, mask, index=patch, show_examples=True)
+    def augment_features(self, features: Dict[str, np.ndarray]) -> None:
+        return None
 
-    def augment_patch(self, patches: np.ndarray, mask: np.ndarray, index: int = 1, show_examples: bool = False, threshold: float = 0.0) -> Tuple[np.ndarray]:
+    def _water_content(self, mask: np.ndarray) -> float:
+        return np.sum(mask) / mask.size * 100.0
+    
+    def _get_features(self, patch: int) -> Dict[str, np.ndarray]:
+        # Get Mask
+        features = {"mask": self.data_loader.get_mask(patch)}
+
+        # Get RGB Features
+        if "RGB" in self.bands:
+            features["RGB"] = self.data_loader.get_rgb_features(patch, preprocess_img=False)
+
+        # Get NIR Features
+        if "NIR" in self.bands:
+            features["NIR"] = self.data_loader.get_nir_features(patch, preprocess_img=False)
+
+        # Get SWIR Features
+        if "SWIR" in self.bands:
+            features["SWIR"] = self.data_loader.get_swir_features(patch, preprocess_img=False)
+
+        return features
+
+
+class TransferImgSequence(ImgSequence):
+    """A class to demonstrate the waterbody transfer method."""
+
+    def __init__(self, data_loader: DataLoader, patches: List[int], batch_size: int = 32, bands: Sequence[str] = None, augment_data: bool = False, shuffle: bool = True):
+        # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
+        super().__init__(data_loader, patches, batch_size, bands, augment_data, shuffle)
+        # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
+        self.transfer_patches = []
+        if self.augment_data:
+            for source_index in self.indices:
+                source_mask = self.data_loader.get_mask(source_index)
+                if self._water_content(source_mask) > 10:
+                    print(source_index, self._water_content(source_mask))
+                    self.transfer_patches.append(source_index)
+
+    def augment_features(self, features: Dict[str, np.ndarray]) -> None:
+        """
+        Applies data augmentation to a given patch
+        :param features: A dictionary of input features (RGB, NIR, SWIR) and the mask to which we want to apply augmentation
+        """
+        # Transfer Waterbody
+        self.transfer_waterbody(features)
+
+        # Apply Random Horizontal/Vertical Flip with 25% Probability
+        outcome_1 = random.randint(1, 100)
+        outcome_2 = random.randint(1, 100)
+        if outcome_1 <= 50:
+            for feature_index in features.keys():
+                features[feature_index] = flip_up_down(features[feature_index]).numpy() if outcome_2 <= 50 else flip_left_right(features[feature_index]).numpy()
+
+        # Apply Random Counter Clockwise Rotation Of 90, 180, or 270 Degrees With 25% Probability
+        outcome_1 = random.randint(1, 100)
+        outcome_2 = random.randint(1, 3)
+        if outcome_1 <= 50:
+            for feature_index in features.keys():
+                features[feature_index] = rot90(features[feature_index], k=outcome_2).numpy()
+        
+
+    def transfer_waterbody(self, features: Dict[str, np.ndarray], threshold: float = 0.0) -> None:
+        """
+        Given a destination patch, transfers a waterbody to the destination if the destination has a water content below a given threshold.
+        :param features: A dictionary of input features (RGB, NIR, SWIR) and the mask to which we want to transfer a waterbody
+        :param threshold: The water content threshold below which we apply waterbody transfer
+        """
         # while self._water_content(mask) < threshold:
-        if self._water_content(mask) <= threshold:
+        if self._water_content(features["mask"]) <= threshold:
 
             # Get Source Mask
             assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
             source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
-            source_mask = self.data_loader.get_mask(source_index)
+            source_features = self._get_features(source_index)
+            source_mask = source_features["mask"]
 
-            # Get Source Features
-            methods = {"RGB": self.data_loader.get_rgb_features, "NIR": self.data_loader.get_nir_features, "SWIR": self.data_loader.get_swir_features}
-            for patch, band in zip(patches, self.bands):
-                source_feature = methods[band](source_index, preprocess_img=False)
+            # Apply Waterbody Transfer To Each Feature Map
+            for band in self.bands:
+
+                # Get Source Feature
+                source_feature = source_features[band]
 
                 # Extract Waterbody From Source Feature 
                 waterbody = source_mask * source_feature
 
                 # Remove Waterbody Region From Destination Feature
-                augmented_patch = patch * np.where(source_mask == 1, 0, 1).astype("uint16")
+                features[band] *= np.where(source_mask == 1, 0, 1).astype("uint16")
 
                 # Transfer Waterbody To Destination Feature Map
-                augmented_patch += waterbody
-                
-                # Plot Augmented Patch
-                if show_examples:
-                    _, axs = plt.subplots(1, 6)
-                    axs[0].imshow(source_mask)
-                    axs[0].set_title("Src. Mask", fontsize=6)
-                    axs[1].imshow(adjust_rgb(source_feature, gamma=0.5) if band == "RGB" else source_feature)
-                    axs[1].set_title("Src. Features", fontsize=6)
-                    axs[2].imshow(mask)
-                    axs[2].set_title("Dest. Mask", fontsize=6)
-                    axs[3].imshow(adjust_rgb(patch, gamma=0.5) if band == "RGB" else patch)
-                    axs[3].set_title("Dest. Features", fontsize=6)
-                    axs[4].imshow(np.where((mask + source_mask) >= 1, 1, 0).astype("uint16"))
-                    axs[4].set_title("Final Mask", fontsize=6)
-                    axs[5].imshow(adjust_rgb(augmented_patch, gamma=0.5) if band == "RGB" else augmented_patch)
-                    axs[5].set_title("Final Features", fontsize=6)
-                    plt.tight_layout()
-                    plt.savefig(f"faz/transfer_{index}_{band}.png", dpi=1000)
-                    plt.close()
+                features[band] += waterbody
 
-            mask = np.where((mask + source_mask) >= 1, 1, 0).astype("uint16")
-
-        return patches, mask
-
-    def _water_content(self, mask: np.ndarray) -> float:
-        return np.sum(mask) / mask.size * 100.0
-    
-    def _get_features(self, patch: int) -> Tuple[List[np.ndarray], np.ndarray]:
-        # Get Mask
-        mask = self.data_loader.get_mask(patch)
-
-        # Get RGB Features
-        rgb_feature = self.data_loader.get_rgb_features(patch, preprocess_img=False) if "RGB" in self.bands else None
-
-        # Get NIR Features
-        nir_feature = self.data_loader.get_nir_features(patch, preprocess_img=False) if "NIR" in self.bands else None
-
-        # Get SWIR Features
-        swir_feature = self.data_loader.get_swir_features(patch, preprocess_img=False) if "SWIR" in self.bands else None
-
-        # Collect Features 
-        features = list(filter(lambda x: x is not None, (rgb_feature, nir_feature, swir_feature)))
-
-        return features, mask
+            # print("Initial Water Content:", self._water_content(features["mask"]))
+            features["mask"] = np.where((features["mask"] + source_mask) >= 1, 1, 0).astype("uint16")
+            # print("Augmented Water Content:", self._water_content(features["mask"]))
 
 
 def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
@@ -385,15 +346,20 @@ def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, 
     :param config: The script configuration encoded as a Python dictionary; typically read from an external file
     :returns: The training, validation, and test data as a tuple of the form (train, validation, test)
     """
+    # Read Parameters From Config File
     bands = config["hyperparameters"]["bands"]
     batch_size = config["hyperparameters"]["batch_size"]
-    lower_bound, upper_bound = loader.get_bounds()
-    assert lower_bound == 1 and upper_bound == 3600, f"Error: Bounds Must Be Between 1 and 3600 (Got [{lower_bound}, {upper_bound}])"
-    patches = np.array(range(1, 3601))
-    np.random.shuffle(patches)
-    train_data = ImgSequence(loader, patches[0:2700], bands=bands, batch_size=batch_size)
-    val_data = ImgSequence(loader, patches[2700:3000], bands=bands, batch_size=batch_size, shuffle=False)
-    test_data = ImgSequence(loader, patches[3000:3600], bands=bands, batch_size=batch_size, shuffle=False)
+    patch_size = get_patch_size(config)
+
+    # Read Batches From JSON File
+    with open(f"batches/{patch_size}.json") as f:
+        batch_file = json.loads(f.read())
+    
+    # Create Train, Validation, And Test Data
+    Constructor = ImgSequence if not get_waterbody_transfer(config) else TransferImgSequence
+    train_data = Constructor(loader, batch_file["train"], bands=bands, batch_size=batch_size, augment_data=True)
+    val_data = Constructor(loader, batch_file["validation"], bands=bands, batch_size=batch_size, shuffle=False)
+    test_data = Constructor(loader, batch_file["test"], bands=bands, batch_size=batch_size, shuffle=False)
     return train_data, val_data, test_data
 
 

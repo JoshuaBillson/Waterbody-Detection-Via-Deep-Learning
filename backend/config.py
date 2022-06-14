@@ -37,6 +37,15 @@ def get_patch_size(config: Dict[str, Any]) -> int:
     return config["patch_size"]
 
 
+def get_waterbody_transfer(config: Dict[str, Any]) -> bool:
+    """
+    Get the configuration for applying waterbody transfer
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: Boolean indicating whether or not we want to apply waterbody transfer
+    """
+    return config["hyperparameters"]["apply_transfer"]
+
+
 def get_experiment_tag(config: Dict[str, Any]) -> str:
     """
     Get the experiment tag

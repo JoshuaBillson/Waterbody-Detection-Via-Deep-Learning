@@ -21,6 +21,7 @@ def nir_input_layer(inputs: Layer):
     :param config: A dictionary storing the script configuration
     :return: The input and output layers as the tuple (inputs, outputs)
     """
+    return inputs
     nir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(inputs)
     return nir_conv
 

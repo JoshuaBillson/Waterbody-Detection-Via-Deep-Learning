@@ -166,27 +166,31 @@ def create_batches(config: Dict[str, Any]) -> None:
     :param config: The script configuration stored as a dictionary; typically read from an external file
     :returns: Nothing
     """
-    # Get Patch Indices
-    patches_directory = f"data/{get_timestamp_directory(config)}/patches"
-    patches = list(filter(lambda x: "mask" in x, os.listdir(f"{patches_directory}/mask")))
-    num_patches = len(patches)
-    patch_indices = np.array(range(1, num_patches + 1))
-    np.random.shuffle(patch_indices)
-
-    # Split Patches Into Training, Validation, And Test Batches
-    num_train, num_val = (2700, 300) if num_patches == 3600 else (int(0.75 * num_patches), int(0.10 * num_patches))
-    train_data = patches[0:num_train]
-    val_data = patches[num_train:num_train+num_val]
-    test_data = patches[num_train+num_val:]
-
     # Create Directory For Batches
     batches_directory = "batches"
     if batches_directory not in os.listdir():
         os.mkdir(batches_directory)
 
-    # Write Batches To Disk
-    with open(f"batches/{get_patch_size(config)}.json", 'w') as batch_file:
-        batch_file.write(json.dumps({"train": list(train_data), "validation": list(val_data), "test": list(test_data)}))
+    # Check That Batches Don't Already Exist For Configured Patch Size
+    filename = f"{get_patch_size(config)}.json"
+    if filename not in os.listdir("batches"):
+
+        # Get Patch Indices
+        patches_directory = f"data/{get_timestamp_directory(config)}/patches"
+        patches = list(filter(lambda x: "mask" in x, os.listdir(f"{patches_directory}/mask")))
+        num_patches = len(patches)
+        patch_indices = np.array(range(1, num_patches + 1))
+        np.random.shuffle(patch_indices)
+
+        # Split Patches Into Training, Validation, And Test Batches
+        num_train, num_val = (2700, 300) if num_patches == 3600 else (int(0.75 * num_patches), int(0.10 * num_patches))
+        train_data = list(map(int, list(patch_indices[0:num_train])))
+        val_data = list(map(int, list(patch_indices[num_train:num_train+num_val])))
+        test_data = list(map(int, list(patch_indices[num_train+num_val:])))
+
+        # Write Batches To Disk
+        with open(f"batches/{get_patch_size(config)}.json", 'w') as batch_file:
+            batch_file.write(json.dumps({"train": train_data, "validation": val_data, "test": test_data}, indent=2))
 
 
 def generate_patches(loader: DataLoader = None, config: Dict[str, Any] = None):
@@ -200,7 +204,7 @@ def generate_patches(loader: DataLoader = None, config: Dict[str, Any] = None):
         loader = DataLoader(timestamp=get_timestamp(config))
 
     # Generate Patches
-    _create_patches(config, True)
+    _create_patches(config, config["show_data"])
     create_batches(config)
 
 
