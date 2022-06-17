@@ -1,14 +1,10 @@
 import os
-import numpy as np
-import shutil
-from typing import Dict, Any, List
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, Input
+from typing import Dict, Any
+from tensorflow.keras.layers import Conv2D, Input, concatenate
 from tensorflow.keras.models import Model
 from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer, rgb_nir_swir_input_layer
 from backend.config import get_model_type, get_bands, get_backbone, get_patch_size, get_experiment_tag
-from backend.data_loader import DataLoader
-from backend.metrics import MIoU
-import matplotlib.pyplot as plt
+from backend.config import get_patch_size
 
 
 def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -44,10 +40,9 @@ def rgb_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model.summary()
 
     # Replace Model Input
-    patch_size = config["patch_size"]
+    patch_size = get_patch_size(config)
     inputs = Input(shape=(patch_size, patch_size, 3))
-    x = rgb_input_layer(inputs)
-    outputs = model(x)
+    outputs = model(inputs)
     return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
 
 
@@ -62,7 +57,7 @@ def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    patch_size = config["patch_size"]
+    patch_size = get_patch_size(config)
     inputs = Input(shape=(patch_size, patch_size, 1))
     x = nir_input_layer(inputs)
     outputs = model(x)
@@ -80,7 +75,7 @@ def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    patch_size = config["patch_size"]
+    patch_size = get_patch_size(config)
     inputs = Input(shape=(patch_size // 2, patch_size // 2, 1))
     x = swir_input_layer(inputs)
     outputs = model(x)
@@ -98,9 +93,10 @@ def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    patch_size = config["patch_size"]
+    patch_size = get_patch_size(config)
     rgb_inputs = Input(shape=(patch_size, patch_size, 3))
     nir_inputs = Input(shape=(patch_size, patch_size, 1))
+    concat = concatenate([rgb_inputs, nir_inputs], axis=3)
     x = rgb_nir_input_layer(rgb_inputs, nir_inputs)
     outputs = model(x)
     return Model(inputs=[rgb_inputs, nir_inputs], outputs=outputs, name=get_model_name(config))
@@ -117,10 +113,10 @@ def rgb_nir_swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    patch_size = config["patch_size"]
+    patch_size = get_patch_size(config)
     rgb_inputs = Input(shape=(patch_size, patch_size, 3))
     nir_inputs = Input(shape=(patch_size, patch_size, 1))
-    swir_inputs = Input(shape=(patch_size // 2, patch_size // 2, 1))
+    swir_inputs = Input(shape=(patch_size, patch_size, 1))
     x = rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs)
     outputs = model(x)
     return Model(inputs=[rgb_inputs, nir_inputs, swir_inputs], outputs=outputs, name=get_model_name(config))
@@ -156,44 +152,3 @@ def get_model_name(config: Dict[str, Any]) -> str:
     possible_ids = [possible_id for possible_id in range(0, max(existing_ids) + 2) if possible_id not in existing_ids] if existing_ids else [0]
     model_id = possible_ids[0]
     return f"{partial_name}.{model_id}"
-
-
-def predict_batch(batch: List[int], data_loader: DataLoader, model: Model, config: Dict[str, Any], directory: str, threshold) -> None:
-    """
-    Predict on a batch of feature samples and save the resulting prediction to disk alongside its mask and MIoU performance
-    :param batch: A list of patch indexes on which we want to predict
-    :param data_loader: An object for reading patches from the disk
-    :param model: The model whose prediction we are interested in
-    :param config: The script configuration stored as a dictionary; typically read from an external file
-    :param directory: The name of the directory in which we want to save the model predictions
-    :param threshold: We filter out patches whose water content percentage is below this value
-    :return: Nothing
-    """
-    # Load Batch
-    features, masks, indices = data_loader.get_batch(batch, get_bands(config), threshold=threshold)
-    
-    # Get Predictions
-    predictions = []
-    for feature_index in range(len(features[0])):
-        prediction = model.predict([feature[feature_index:feature_index+1] for feature in features])
-        predictions.append(prediction[0, ...])
-
-    # Create Directory To Save Predictions
-    if directory not in os.listdir():
-        os.mkdir(directory)
-    if model.name in os.listdir(directory):
-        shutil.rmtree(f"{directory}/{model.name}")
-    os.mkdir(f"{directory}/{model.name}")
-
-    # Save Model Predictions To Disk
-    for prediction, mask, index in zip(predictions, masks, indices):
-        miou = MIoU(mask.astype("float32"), prediction)
-        fig, axs = plt.subplots(1, 2)
-        fig.tight_layout()
-        axs[0].imshow(mask)
-        axs[0].set_title("Ground Truth")
-        axs[1].imshow(np.where(prediction < 0.5, 0, 1))
-        axs[1].set_title(f"{model.name} ({miou.numpy():.3f})")
-        plt.savefig(f"{directory}/{model.name}/prediction.{index}.png", dpi=300, bbox_inches='tight')
-        plt.cla()
-        plt.close()

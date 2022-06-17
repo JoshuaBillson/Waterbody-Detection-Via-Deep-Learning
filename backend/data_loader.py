@@ -3,16 +3,18 @@ import math
 import json
 import random
 import shutil
+import cv2
 import pandas
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
+import tensorflow as tf
 from typing import Tuple, Sequence, List, Dict, Any
 from tensorflow.image import flip_up_down, flip_left_right, rot90
 from tensorflow.keras.utils import Sequence as KerasSequence
 from tensorflow.keras.models import Model
 from backend.utils import adjust_rgb
-from backend.metrics import MIoU, CombinedMIoU
+from backend.metrics import MIOU
 from backend.config import get_patch_size, get_waterbody_transfer
 
 
@@ -149,6 +151,9 @@ class ImgSequence(KerasSequence):
         # Shuffle Patches
         if self.shuffle:
             np.random.shuffle(self.indices)
+        
+        # Confirm Waterbody Transfer
+        self._apply_water_transfer()
 
     def __len__(self) -> int:
         return math.ceil(len(self.indices) / self.batch_size)
@@ -204,7 +209,7 @@ class ImgSequence(KerasSequence):
         os.mkdir(model_directory)
 
         # Iterate Over All Patches In Batch
-        MIoUs = []
+        MIoUs, MIoU = [], MIOU()
         for patch_index in self.indices:
 
             # Load Features And Mask
@@ -213,17 +218,30 @@ class ImgSequence(KerasSequence):
         
             # Get Prediction
             prediction = model.predict([np.array([DataLoader.normalize_channels(features[band].astype("float32"))]) for band in self.bands])
+            MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])
 
-            # Plot Prediction And Save To Disk
-            primary_band = self.bands[0]
-            MIoUs.append([patch_index, CombinedMIoU(mask.astype("float32"), prediction).numpy()])
-            _, axs = plt.subplots(1, 3)
-            axs[0].imshow(adjust_rgb(features[primary_band], gamma=0.5) if primary_band == "RGB" else features[primary_band])
-            axs[0].set_title(self.bands[0])
-            axs[1].imshow(mask)
-            axs[1].set_title("Ground Truth")
-            axs[2].imshow(np.where(prediction < 0.5, 0, 1)[0])
-            axs[2].set_title(f"Prediction ({MIoUs[-1][1]:.3f})")
+            # Plot Features
+            i = 0
+            _, axs = plt.subplots(1, len(self.bands) + 2)
+            for band in self.bands:
+                axs[i].imshow(adjust_rgb(features[band], gamma=0.5) if band == "RGB" else features[band])
+                axs[i].set_title(band, fontsize=6)
+                axs[i].axis("off")
+                i += 1
+            
+            # Plot Ground Truth
+            axs[i].imshow(mask)
+            axs[i].set_title("Ground Truth", fontsize=6)
+            axs[i].axis("off")
+            i += 1
+
+            # Plot Prediction
+            axs[i].imshow(np.where(prediction < 0.5, 0, 1)[0])
+            axs[i].set_title(f"Prediction ({MIoUs[-1][1]:.3f})", fontsize=6)
+            axs[i].axis("off")
+            i += 1
+
+            # Save Prediction To Disk
             plt.tight_layout()
             plt.savefig(f"{model_directory}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
             plt.cla()
@@ -244,6 +262,9 @@ class ImgSequence(KerasSequence):
     def augment_features(self, features: Dict[str, np.ndarray]) -> None:
         return None
 
+    def _apply_water_transfer(self):
+        print("WATERBODY TRANSFER: FALSE")
+
     def _water_content(self, mask: np.ndarray) -> float:
         return np.sum(mask) / mask.size * 100.0
     
@@ -262,6 +283,7 @@ class ImgSequence(KerasSequence):
         # Get SWIR Features
         if "SWIR" in self.bands:
             features["SWIR"] = self.data_loader.get_swir_features(patch, preprocess_img=False)
+            features["SWIR"] = np.resize(cv2.resize(features["SWIR"], (512, 512), interpolation = cv2.INTER_AREA), (512, 512, 1))
 
         return features
 
@@ -272,12 +294,13 @@ class TransferImgSequence(ImgSequence):
     def __init__(self, data_loader: DataLoader, patches: List[int], batch_size: int = 32, bands: Sequence[str] = None, augment_data: bool = False, shuffle: bool = True):
         # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
         super().__init__(data_loader, patches, batch_size, bands, augment_data, shuffle)
+
         # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
         self.transfer_patches = []
         if self.augment_data:
             for source_index in self.indices:
                 source_mask = self.data_loader.get_mask(source_index)
-                if self._water_content(source_mask) > 10:
+                if 5.0 < self._water_content(source_mask):
                     print(source_index, self._water_content(source_mask))
                     self.transfer_patches.append(source_index)
 
@@ -292,14 +315,14 @@ class TransferImgSequence(ImgSequence):
         # Apply Random Horizontal/Vertical Flip with 25% Probability
         outcome_1 = random.randint(1, 100)
         outcome_2 = random.randint(1, 100)
-        if outcome_1 <= 50:
+        if outcome_1 <= -1:
             for feature_index in features.keys():
                 features[feature_index] = flip_up_down(features[feature_index]).numpy() if outcome_2 <= 50 else flip_left_right(features[feature_index]).numpy()
 
         # Apply Random Counter Clockwise Rotation Of 90, 180, or 270 Degrees With 25% Probability
         outcome_1 = random.randint(1, 100)
         outcome_2 = random.randint(1, 3)
-        if outcome_1 <= 50:
+        if outcome_1 <= -1:
             for feature_index in features.keys():
                 features[feature_index] = rot90(features[feature_index], k=outcome_2).numpy()
         
@@ -310,20 +333,26 @@ class TransferImgSequence(ImgSequence):
         :param features: A dictionary of input features (RGB, NIR, SWIR) and the mask to which we want to transfer a waterbody
         :param threshold: The water content threshold below which we apply waterbody transfer
         """
-        # while self._water_content(mask) < threshold:
-        if self._water_content(features["mask"]) <= threshold:
+        # Acquire Probability Of Applying Transfer
+        # probability = int(100.0 - (self._water_content(features["mask"]) * 20))
+        if self._water_content(features["mask"]) == 0.0:
+
+            # Get Random Numbers To Determine Rotation/Flip Of Source Patch
+            num_rotations = random.randint(0, 3)
+            flip_horizontal = random.randint(1, 100)
+            flip_vertical = random.randint(1, 100)
 
             # Get Source Mask
             assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
             source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
             source_features = self._get_features(source_index)
-            source_mask = source_features["mask"]
+            source_mask = self._augment_patch(source_features["mask"], num_rotations, flip_horizontal, flip_vertical)
 
             # Apply Waterbody Transfer To Each Feature Map
             for band in self.bands:
 
                 # Get Source Feature
-                source_feature = source_features[band]
+                source_feature = self._augment_patch(source_features[band], num_rotations, flip_horizontal, flip_vertical)
 
                 # Extract Waterbody From Source Feature 
                 waterbody = source_mask * source_feature
@@ -333,10 +362,32 @@ class TransferImgSequence(ImgSequence):
 
                 # Transfer Waterbody To Destination Feature Map
                 features[band] += waterbody
-
-            # print("Initial Water Content:", self._water_content(features["mask"]))
+                
             features["mask"] = np.where((features["mask"] + source_mask) >= 1, 1, 0).astype("uint16")
-            # print("Augmented Water Content:", self._water_content(features["mask"]))
+
+    def _apply_water_transfer(self):
+        if self.augment_data:
+            print("WATERBODY TRANSFER: TRUE")
+        else:
+            print("WATERBODY TRANSFER: FALSE")
+
+    def _augment_patch(self, img, num_rotations, flip_horizontal, flip_vertical):
+        return img
+        channels = img.shape[-1]
+        img = self._rotate_90(img, num_rotations)
+        img = self._flip_horizontal(img, flip_horizontal)
+        img = self._flip_vertical(img, flip_vertical)
+        return np.reshape(img, (512, 512, channels))
+
+    def _rotate_90(self, img, num_rotations):
+            rotations = {1: cv2.ROTATE_90_CLOCKWISE, 2: cv2.ROTATE_180, 3: cv2.ROTATE_90_COUNTERCLOCKWISE}
+            return cv2.rotate(img, rotations[num_rotations]) if num_rotations != 0 else img
+
+    def _flip_horizontal(self, img, outcome):
+            return cv2.flip(img, 1) if outcome <= 50 else img
+
+    def _flip_vertical(self, img, outcome):
+            return cv2.flip(img, 0) if outcome <= 50 else img
 
 
 def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:

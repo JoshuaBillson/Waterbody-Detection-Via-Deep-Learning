@@ -10,10 +10,10 @@ def unet_plus(config):
     :return: The assembled U-Net++ model
     """
     # Get Backbone And Input Channels
-    _, backbone = get_model_config(config)
+    input_channels, backbone = get_model_config(config)
 
     # Construct Base Model
-    model = unet_plus_2d((config['patch_size'], config['patch_size'], 32), [64, 128, 256, 512],
+    model = unet_plus_2d((config['patch_size'], config['patch_size'], input_channels), [64, 128, 256, 512, 1024],
                          n_labels=1, stack_num_down=2, stack_num_up=1, activation='ReLU', output_activation='Sigmoid',
                          batch_norm=True, pool='max', unpool='nearest', name='r2unet', backbone=backbone)
     model.summary()

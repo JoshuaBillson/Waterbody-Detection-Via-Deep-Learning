@@ -5,19 +5,20 @@
   "show_samples": false,
   "timestamp": 1,
   "patch_size": 512,
-  "experiment_tag": "waterbody_transfer_augmentation_50",
-  "create_logs": false,
-  "train": false,
+  "experiment_tag": "fusion_head_3d_conv",
+  "create_logs": true,
+  "train": true,
   "test": true,
   "hyperparameters": {
-    "model": "unet_deep.nir.waterbody_transfer.0",
-    "bands": ["NIR"],
+    "model": "vnet",
+    "bands": ["RGB", "NIR", "SWIR"],
     "backbone": null,
     "learning_rate": 0.00005,
     "optimizer": "adam",
+    "loss": "jaccard_bce", 
     "batch_size": 4,
     "epochs": 50, 
-    "apply_transfer": true
+    "apply_transfer": false
   }
 }
 

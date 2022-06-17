@@ -10,10 +10,10 @@ def transunet(config):
     :return: The assembled TransUNet model
     """
     # Get Backbone And Input Channels
-    _, backbone = get_model_config(config)
+    input_channels, backbone = get_model_config(config)
 
     # Construct Base Model
-    model = transunet_2d((config['patch_size'], config['patch_size'], 32), filter_num=[64, 128, 256, 512], n_labels=1,
+    model = transunet_2d((config['patch_size'], config['patch_size'], input_channels), filter_num=[64, 128, 256, 512], n_labels=1,
                          stack_num_down=2, stack_num_up=2, embed_dim=768, num_mlp=3072, num_heads=12, num_transformer=12,
                          activation='ReLU', mlp_activation='GELU', output_activation='Softmax', batch_norm=True, pool=True,
                          unpool='bilinear', name='transunet', backbone=backbone)

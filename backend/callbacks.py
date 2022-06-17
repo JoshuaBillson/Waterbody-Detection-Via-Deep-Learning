@@ -19,7 +19,7 @@ class PredictionCallback(Callback):
         :param epoch: Current epoch
         :returns: Nothing
         """
-        if epoch % 5 == 0:
+        if epoch % 5 == 0 and epoch != 0:
             self.val_data.predict_batch(self.model, "validation")
 
 

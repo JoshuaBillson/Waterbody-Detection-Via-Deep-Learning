@@ -37,6 +37,20 @@ def get_patch_size(config: Dict[str, Any]) -> int:
     return config["patch_size"]
 
 
+def get_input_channels(config: Dict[str, Any]) -> int:
+    """
+    Get the number of input channels based on the inputs bands from the project config
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: The number of input channels that will be fed into a model
+    """
+    inputs = 0
+    bands = get_bands(config)
+    inputs += 3 if "RGB" in bands else 0
+    inputs += 1 if "NIR" in bands else 0
+    inputs += 1 if "SWIR" in bands else 0
+    return inputs
+
+
 def get_waterbody_transfer(config: Dict[str, Any]) -> bool:
     """
     Get the configuration for applying waterbody transfer
@@ -124,9 +138,4 @@ def get_model_config(config: Dict[str, Any]) -> Tuple[int, str]:
     :param config: A dictionary storing the project configuration; typically loaded from an external file
     :returns: The number of input channels our base model will receive and the backbone returned as (input_channels, backbone)
     """
-    bands = get_bands(config)
-    backbone = get_backbone(config)
-    input_channels = len(bands) + 2 if "RGB" in bands else len(bands)
-    model_type = get_model_type(config)
-    assert not (backbone is not None and input_channels != 3 and model_type not in ["fpn", "pspnet", "linknet"]), "Error: Cannot Use Backbone For Input Channels Other Than 3!"
-    return input_channels, backbone
+    return get_input_channels(config), get_backbone(config)
