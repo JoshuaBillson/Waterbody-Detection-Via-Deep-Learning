@@ -16,6 +16,7 @@ from tensorflow.keras.models import Model
 from backend.utils import adjust_rgb
 from backend.metrics import MIOU
 from backend.config import get_patch_size, get_waterbody_transfer
+from models.utils import evaluate_model
 
 
 class DataLoader:
@@ -189,7 +190,7 @@ class ImgSequence(KerasSequence):
         """
         return list(self.indices)
 
-    def predict_batch(self, model: Model, directory: str) -> None:
+    def predict_batch(self, model: Model, directory: str):
         """
         Predict on a batch of feature samples and save the resulting prediction to disk alongside its mask and MIoU performance
         :param batch: A list of patch indexes on which we want to predict
@@ -253,11 +254,10 @@ class ImgSequence(KerasSequence):
         df.to_csv(f"{model_directory}/Evaluation.csv", index_label="patch")
 
         # Evaluate Final Performance
-        results = model.evaluate(self)
-        for metric, value in zip(model.metrics_names, results):
-            print(metric, value)
+        results = evaluate_model(model, self)
         df = pandas.DataFrame(np.reshape(np.array(results), (1, len(results))), columns=model.metrics_names)
         df.to_csv(f"{model_directory}/Overview.csv", index=False)
+        return results
     
     def augment_features(self, features: Dict[str, np.ndarray]) -> None:
         return None
@@ -300,7 +300,7 @@ class TransferImgSequence(ImgSequence):
         if self.augment_data:
             for source_index in self.indices:
                 source_mask = self.data_loader.get_mask(source_index)
-                if 5.0 < self._water_content(source_mask):
+                if 2.0 < self._water_content(source_mask):
                     print(source_index, self._water_content(source_mask))
                     self.transfer_patches.append(source_index)
 
@@ -334,25 +334,19 @@ class TransferImgSequence(ImgSequence):
         :param threshold: The water content threshold below which we apply waterbody transfer
         """
         # Acquire Probability Of Applying Transfer
-        # probability = int(100.0 - (self._water_content(features["mask"]) * 20))
         if self._water_content(features["mask"]) == 0.0:
-
-            # Get Random Numbers To Determine Rotation/Flip Of Source Patch
-            num_rotations = random.randint(0, 3)
-            flip_horizontal = random.randint(1, 100)
-            flip_vertical = random.randint(1, 100)
 
             # Get Source Mask
             assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
             source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
             source_features = self._get_features(source_index)
-            source_mask = self._augment_patch(source_features["mask"], num_rotations, flip_horizontal, flip_vertical)
+            source_mask = source_features["mask"]
 
             # Apply Waterbody Transfer To Each Feature Map
             for band in self.bands:
 
                 # Get Source Feature
-                source_feature = self._augment_patch(source_features[band], num_rotations, flip_horizontal, flip_vertical)
+                source_feature = source_features[band]
 
                 # Extract Waterbody From Source Feature 
                 waterbody = source_mask * source_feature
@@ -370,24 +364,6 @@ class TransferImgSequence(ImgSequence):
             print("WATERBODY TRANSFER: TRUE")
         else:
             print("WATERBODY TRANSFER: FALSE")
-
-    def _augment_patch(self, img, num_rotations, flip_horizontal, flip_vertical):
-        return img
-        channels = img.shape[-1]
-        img = self._rotate_90(img, num_rotations)
-        img = self._flip_horizontal(img, flip_horizontal)
-        img = self._flip_vertical(img, flip_vertical)
-        return np.reshape(img, (512, 512, channels))
-
-    def _rotate_90(self, img, num_rotations):
-            rotations = {1: cv2.ROTATE_90_CLOCKWISE, 2: cv2.ROTATE_180, 3: cv2.ROTATE_90_COUNTERCLOCKWISE}
-            return cv2.rotate(img, rotations[num_rotations]) if num_rotations != 0 else img
-
-    def _flip_horizontal(self, img, outcome):
-            return cv2.flip(img, 1) if outcome <= 50 else img
-
-    def _flip_vertical(self, img, outcome):
-            return cv2.flip(img, 0) if outcome <= 50 else img
 
 
 def load_dataset(loader: DataLoader, config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:

@@ -2,9 +2,8 @@ import os
 from typing import Dict, Any
 from tensorflow.keras.layers import Conv2D, Input, concatenate
 from tensorflow.keras.models import Model
-from models.layers import rgb_input_layer, nir_input_layer, swir_input_layer, rgb_nir_input_layer, rgb_nir_swir_input_layer
-from backend.config import get_model_type, get_bands, get_backbone, get_patch_size, get_experiment_tag
-from backend.config import get_patch_size
+from models.layers import rgb_nir_swir_input_layer
+from backend.config import get_model_type, get_bands, get_patch_size, get_experiment_tag
 
 
 def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -14,18 +13,14 @@ def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
     :param config: The model configuration
     :return: The final model.
     """
-    bands = get_bands(config)
-    if "RGB" in bands and "NIR" in bands and "SWIR" in bands:
-        return rgb_nir_swir_model(base_model, config)
-    if "RGB" in bands and "NIR" in bands:
-        return rgb_nir_model(base_model, config)
-    elif "RGB" in bands:
-        return rgb_model(base_model, config)
-    elif "NIR" in bands:
-        return nir_model(base_model, config)
-    elif "SWIR" in bands:
-        return swir_model(base_model, config)
-    raise ValueError("Invalid Bands Received!")
+    model_constructors = {
+        "RGB+NIR+SWIR": rgb_nir_swir_model,
+        "RGB+NIR": rgb_nir_model,
+        "RGB": rgb_model,
+        "NIR": nir_model,
+        "SWIR": swir_model,
+    }
+    return model_constructors["+".join(get_bands(config))](base_model, config)
 
 
 def rgb_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -37,13 +32,11 @@ def rgb_model(base_model: Model, config: Dict[str, Any]) -> Model:
     """
     # Replace Output Layer
     model = replace_output(base_model, config)
-    model.summary()
 
     # Replace Model Input
-    patch_size = get_patch_size(config)
-    inputs = Input(shape=(patch_size, patch_size, 3))
-    outputs = model(inputs)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
+    rgb_input = Input(shape=(get_patch_size(config), get_patch_size(config), 3))
+    outputs = model(rgb_input)
+    return Model(inputs=rgb_input, outputs=outputs, name=get_model_name(config))
 
 
 def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -57,11 +50,9 @@ def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    patch_size = get_patch_size(config)
-    inputs = Input(shape=(patch_size, patch_size, 1))
-    x = nir_input_layer(inputs)
-    outputs = model(x)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
+    nir_input = Input(shape=(get_patch_size(config), get_patch_size(config), 1))
+    outputs = model(nir_input)
+    return Model(inputs=nir_input, outputs=outputs, name=get_model_name(config))
 
 
 def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -75,11 +66,9 @@ def swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     model = replace_output(base_model, config)
 
     # Replace Model Input
-    patch_size = get_patch_size(config)
-    inputs = Input(shape=(patch_size // 2, patch_size // 2, 1))
-    x = swir_input_layer(inputs)
-    outputs = model(x)
-    return Model(inputs=inputs, outputs=outputs, name=get_model_name(config))
+    swir_input = Input(shape=(get_patch_size(config), get_patch_size(config), 1))
+    outputs = model(swir_input)
+    return Model(inputs=swir_input, outputs=outputs, name=get_model_name(config))
 
 
 def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -97,8 +86,7 @@ def rgb_nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     rgb_inputs = Input(shape=(patch_size, patch_size, 3))
     nir_inputs = Input(shape=(patch_size, patch_size, 1))
     concat = concatenate([rgb_inputs, nir_inputs], axis=3)
-    x = rgb_nir_input_layer(rgb_inputs, nir_inputs)
-    outputs = model(x)
+    outputs = model(concat)
     return Model(inputs=[rgb_inputs, nir_inputs], outputs=outputs, name=get_model_name(config))
 
 
@@ -117,8 +105,8 @@ def rgb_nir_swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     rgb_inputs = Input(shape=(patch_size, patch_size, 3))
     nir_inputs = Input(shape=(patch_size, patch_size, 1))
     swir_inputs = Input(shape=(patch_size, patch_size, 1))
-    x = rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs)
-    outputs = model(x)
+    fusion_head = rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs, config)
+    outputs = model(fusion_head)
     return Model(inputs=[rgb_inputs, nir_inputs, swir_inputs], outputs=outputs, name=get_model_name(config))
 
 
@@ -152,3 +140,16 @@ def get_model_name(config: Dict[str, Any]) -> str:
     possible_ids = [possible_id for possible_id in range(0, max(existing_ids) + 2) if possible_id not in existing_ids] if existing_ids else [0]
     model_id = possible_ids[0]
     return f"{partial_name}.{model_id}"
+
+
+def evaluate_model(model: Model, test_data):
+    """
+    Evaluate the given model on the provided test data
+    :param model: The Keras model we want to evaluate
+    :param test_data: The data on which to evaluate the model
+    """
+    results = model.evaluate(test_data)
+    print(f"\nEVALUATION SUMMARY FOR {model.name.upper()}")
+    for metric, value in zip(model.metrics_names, results):
+        print(metric, value)
+    return results

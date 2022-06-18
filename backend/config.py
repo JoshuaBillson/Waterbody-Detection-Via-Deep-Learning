@@ -17,7 +17,8 @@ def get_bands(config: Dict[str, Any]) -> List[str]:
     :param config: A dictionary storing the project configuration; typically loaded from an external file
     :returns: The list of bands we want to use
     """
-    return config["hyperparameters"]["bands"]
+    return [band for band in ("RGB", "NIR", "SWIR") if band in config["hyperparameters"]["bands"]]
+
 
 def get_batch_size(config: Dict[str, Any]) -> int:
     """
@@ -43,12 +44,15 @@ def get_input_channels(config: Dict[str, Any]) -> int:
     :param config: A dictionary storing the project configuration; typically loaded from an external file
     :returns: The number of input channels that will be fed into a model
     """
-    inputs = 0
-    bands = get_bands(config)
-    inputs += 3 if "RGB" in bands else 0
-    inputs += 1 if "NIR" in bands else 0
-    inputs += 1 if "SWIR" in bands else 0
-    return inputs
+    channels = {
+        "RGB": 3,
+        "NIR": 1,
+        "SWIR": 1,
+        "RGB+NIR": 4,
+        "RGB+SWIR": 4,
+        "RGB+NIR+SWIR": {"naive": 5, "depthwise": 128, "3D": 125, "paper": 128}[get_fusion_head(config)],
+    }
+    return channels["+".join(get_bands(config))]
 
 
 def get_waterbody_transfer(config: Dict[str, Any]) -> bool:
@@ -114,15 +118,6 @@ def get_learning_rate(config: Dict[str, Any]) -> float:
     return config["hyperparameters"]["learning_rate"]
 
 
-def get_optimizer(config: Dict[str, Any]) -> str:
-    """
-    Get the optimizer type from the project config
-    :param config: A dictionary storing the project configuration; typically loaded from an external file
-    :returns: The type of optimizer to be used by the training loop
-    """
-    return config["hyperparameters"]["optimizer"]
-
-
 def get_create_logs(config: Dict[str, Any]) -> bool:
     """
     Determines if our training loop should generate logs based on the project config
@@ -139,3 +134,21 @@ def get_model_config(config: Dict[str, Any]) -> Tuple[int, str]:
     :returns: The number of input channels our base model will receive and the backbone returned as (input_channels, backbone)
     """
     return get_input_channels(config), get_backbone(config)
+
+
+def get_fusion_head(config: Dict[str, Any]) -> str:
+    """
+    Get the type of fusion head for combining multi-spectral features from the project config
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: The name of the type of fusion head we want our model to use
+    """
+    return config["hyperparameters"]["fusion_head"]
+
+
+def get_num_experiments(config: Dict[str, Any]) -> int:
+    """
+    Get the number of experiments to run from the project config
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: The number of experiments to run
+    """
+    return config["experiments"]

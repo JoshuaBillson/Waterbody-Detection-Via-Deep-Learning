@@ -1,62 +1,25 @@
 from typing import  Dict, Any
 from tensorflow.keras.activations import swish
-from tensorflow.keras.layers import Conv2D, Conv3D, DepthwiseConv2D, Layer, concatenate, UpSampling2D, Reshape
+from tensorflow.keras.layers import Conv2D, Conv3D, DepthwiseConv2D, Layer, concatenate, Reshape
+from backend.config import get_fusion_head
 
 
-def rgb_input_layer(inputs: Layer):
+def rgb_nir_swir_input_layer(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer, config: Dict[str, Any]) -> Layer:
     """
-    Construct An Input Layer For RGB Bands
+    Construct An Input Layer For RGB + NIR + SWIR Bands
+    :param rgb_inputs: The input layer for RGB features
+    :param nir_inputs: The input layer for NIR features
+    :param swir_inputs: The input layer for SWIR features
     :param config: A dictionary storing the script configuration
-    :return: The input and output layers as the tuple (inputs, outputs)
+    :returns: The fusion head specified by config as a Keras layer
     """
-    return inputs
-    rgb_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(inputs)
-    return rgb_conv
-
-
-def nir_input_layer(inputs: Layer):
-    """
-    Construct An Input Layer For The NIR Bands
-    :param config: A dictionary storing the script configuration
-    :return: The input and output layers as the tuple (inputs, outputs)
-    """
-    return inputs
-    nir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(inputs)
-    return nir_conv
-
-
-def swir_input_layer(inputs: Layer):
-    """
-    Construct An Input Layer For The SWIR Bands
-    :param config: A dictionary storing the script configuration
-    :return: The input and output layers as the tuple (inputs, outputs)
-    """
-    return inputs
-    swir_upsample = UpSampling2D(size=(2, 2))(inputs)
-    swir_conv = Conv2D(32, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(swir_upsample)
-    return swir_conv
-
-
-def rgb_nir_input_layer(rgb_inputs: Layer, nir_inputs: Layer):
-    """
-    Construct An Input Layer For RGB + NIR Bands
-    :param config: A dictionary storing the script configuration
-    :return: The input and output layers as the tuple (inputs, outputs)
-    """
-    concat = concatenate([rgb_inputs, nir_inputs], axis=3)
-    rgb_conv = Conv2D(24, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(rgb_inputs)
-    nir_conv = Conv2D(8, (3, 3), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(nir_inputs)
-    concat = concatenate([rgb_conv, nir_conv], axis=3)
-    return concat
-
-
-def rgb_nir_swir_input_layer(config: Dict[str, Any]):
-    """
-    Construct An Input Layer For RGB + NIR Bands
-    :param config: A dictionary storing the script configuration
-    :return: The input and output layers as the tuple (inputs, outputs)
-    """
-    pass
+    fusion_heads = {
+        "naive": fusion_head_naive,
+        "depthwise": fusion_head_depthwise,
+        "3D": fusion_head_3d,
+        "paper": fusion_head_paper
+    }
+    return fusion_heads[get_fusion_head(config)](rgb_inputs, nir_inputs, swir_inputs)
 
 
 def fusion_head_naive(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> Layer:
@@ -80,7 +43,7 @@ def fusion_head_depthwise(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Lay
     """
     concat = concatenate([rgb_inputs, nir_inputs, swir_inputs], axis=3)
     depthwise_conv = DepthwiseConv2D((3, 3), strides=(1, 1), activation=None, kernel_initializer='he_uniform', padding="same")(concat)
-    return Conv2D(3, (1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(depthwise_conv)
+    return Conv2D(128, (1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(depthwise_conv)
 
 
 def fusion_head_3d(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> Layer:
@@ -97,7 +60,7 @@ def fusion_head_3d(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> 
     return Reshape((512, 512, 125))(conv3d)
 
 
-def fusion_head(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> None:
+def fusion_head_paper(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> Layer:
     """
     A layer for combining RGB, NIR, and SWIR inputs as outlined in 'Deep-Learning-Based Multispectral Satellite ImageSegmentation for Water Body Detection'
     :param rgb_inputs: The input layer for RGB features

@@ -2,7 +2,7 @@ import math
 import os
 from typing import Dict, Any, List
 from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler
+from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler, EarlyStopping
 from backend.data_loader import ImgSequence
 from backend.config import get_create_logs
 
@@ -40,10 +40,11 @@ def get_callbacks(config: Dict[str, Any], val_data: ImgSequence, model: Model) -
     """
     tensorboard = TensorBoard(log_dir=f"logs/tensorboard/{model.name}")
     csv = CSVLogger(filename=f"logs/csv/{model.name}.csv", append=True)
-    checkpoint = ModelCheckpoint(f"checkpoints/{model.name}", save_best_only=False, monitor='val_loss', mode='min')
+    checkpoint = ModelCheckpoint(f"checkpoints/{model.name}", save_best_only=False, monitor='val_loss', mode='min', save_weights_only=False)
     prediction_logger = PredictionCallback(val_data, model)
     learning_rate_scheduler = LearningRateScheduler(lr_scheduler)
-    return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler] if get_create_logs(config) else [learning_rate_scheduler]
+    early_stopping = EarlyStopping(monitor="val_MIoU", min_delta=0.0005, patience=5, verbose=1, mode="max")
+    return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler, early_stopping] if get_create_logs(config) else [learning_rate_scheduler, early_stopping]
 
 
 def create_callback_dirs() -> None:

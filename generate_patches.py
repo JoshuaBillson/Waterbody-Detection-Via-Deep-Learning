@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 import matplotlib.pyplot as plt
 import numpy as np
 from backend.config import get_patch_size, get_timestamp_directory, get_timestamp
-from backend.data_loader import DataLoader
+from backend.data_loader import DataLoader, show_samples
 from backend.utils import adjust_rgb
 
 
@@ -123,13 +123,13 @@ def segment_image(img: np.ndarray, config: Dict[str, Any], is_swir: bool = False
     for x in np.arange(start=0, stop=num_tiles*tile_size, step=tile_size):
         for y in np.arange(start=0, stop=num_tiles*tile_size, step=tile_size):
             tile = img[y:y+tile_size, x:x+tile_size, :]
-            patches += create_patches(tile)
+            patches += make_patches(tile)
 
     # Return Patches
     return np.array(patches)
 
 
-def create_patches(tile: np.ndarray) -> List[np.array]:
+def make_patches(tile: np.ndarray) -> List[np.array]:
     """
     Segment a tile into 9 partially overlapping patches.
     :param tile: The tile we want to cut into patches.
@@ -147,7 +147,7 @@ def create_patches(tile: np.ndarray) -> List[np.array]:
     return patches
 
 
-def _create_patches(config: Dict[str, Any], show_image: bool = False) -> None:
+def create_patches(config: Dict[str, Any], show_image: bool = False) -> None:
     """
     Generate the patches and save them to disk.
     :param config: The script configuration stored as a dictionary; typically read from an external file
@@ -204,8 +204,13 @@ def generate_patches(loader: DataLoader = None, config: Dict[str, Any] = None):
         loader = DataLoader(timestamp=get_timestamp(config))
 
     # Generate Patches
-    _create_patches(config, config["show_data"])
+    create_patches(config, config["show_data"])
+
+    # Create Batches
     create_batches(config)
+
+    # Show Samples
+    show_samples(loader)
 
 
 if __name__ == "__main__":

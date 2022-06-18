@@ -12,7 +12,7 @@ def vnet(config: Dict[str, Any]) -> Model:
     :return: The assembled V-Net model
     """
     # Construct Base Model
-    model = vnet_2d((config["patch_size"], config['patch_size'], 125), filter_num=[32, 64, 128, 256, 512],
+    model = vnet_2d((config["patch_size"], config['patch_size'], get_input_channels(config)), filter_num=[32, 64, 128, 256, 512],
                     n_labels=1, res_num_ini=1, res_num_max=3, activation='PReLU', output_activation='Sigmoid',
                     batch_norm=True, pool=False, unpool=False, name='vnet')
     model.summary()
