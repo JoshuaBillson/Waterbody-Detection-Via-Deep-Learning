@@ -10,7 +10,7 @@ from backend.data_loader import DataLoader, show_samples
 from backend.utils import adjust_rgb
 
 
-def create_rgb_and_nir_patches(config: Dict[str, Any], show_img: bool = False) -> None:
+def create_rgb_and_nir_patches(config: Dict[str, Any]) -> None:
     """
     Creates RGB and NIR patches from the original image and saves them to disk
     :param config: The script configuration stored as a dictionary; typically read from an external file
@@ -20,17 +20,16 @@ def create_rgb_and_nir_patches(config: Dict[str, Any], show_img: bool = False) -
     directory = get_timestamp_directory(config)
     img = DataLoader.read_image(f"data/{directory}/rgb_nir/rgb_nir.tif")
 
-    # Show RGB Image
-    if show_img:
-        rgb_img = img[..., 0:3]
-        img_scaled = adjust_rgb(rgb_img, gamma=0.2)
-        plt.imshow(img_scaled)
-        plt.savefig(f"images/rgb.{get_timestamp(config)}.png", dpi=5000, bbox_inches='tight')
-        plt.show()
+    # Plot RGB And NIR Features
+    rgb_img = img[..., 0:3]
+    img_scaled = adjust_rgb(rgb_img, gamma=0.2)
+    plt.imshow(img_scaled)
+    plt.savefig(f"images/features/{directory}/rgb_features.png", dpi=5000, bbox_inches='tight')
+    plt.close()
 
-        plt.imshow(DataLoader.threshold_channel(img[..., 3:]))
-        plt.savefig(f"images/nir.{get_timestamp(config)}.png", dpi=5000, bbox_inches='tight')
-        plt.show()
+    plt.imshow(DataLoader.threshold_channel(img[..., 3:]))
+    plt.savefig(f"images/features/{directory}/nir_features.png", dpi=5000, bbox_inches='tight')
+    plt.close()
 
     # Partition Image Into Patches
     patches = segment_image(img, config)
@@ -40,7 +39,7 @@ def create_rgb_and_nir_patches(config: Dict[str, Any], show_img: bool = False) -
     write_patches(rgb_patches, "rgb", config)
 
 
-def create_swir_patches(config: Dict[str, Any], show_img: bool = False) -> None:
+def create_swir_patches(config: Dict[str, Any]) -> None:
     """
     Creates SWIR patches from the original image and saves them to disk
     :param config: The script configuration stored as a dictionary; typically read from an external file
@@ -49,11 +48,10 @@ def create_swir_patches(config: Dict[str, Any], show_img: bool = False) -> None:
     # Open File
     img = DataLoader.read_image(f"data/{get_timestamp_directory(config)}/swir/swir.tif")
 
-    # Plot Image
-    if show_img:
-        plt.imshow(DataLoader.threshold_channel(img))
-        plt.savefig(f"images/swir.{get_timestamp(config)}.png", dpi=5000, bbox_inches='tight')
-        plt.show()
+    # Plot SWIR Features
+    plt.imshow(DataLoader.threshold_channel(img))
+    plt.savefig(f"images/features/{get_timestamp_directory(config)}/swir_features.png", dpi=5000, bbox_inches='tight')
+    plt.close()
 
     # Partition Image Into Patches
     patches = segment_image(img, config, is_swir=True).astype("uint16")

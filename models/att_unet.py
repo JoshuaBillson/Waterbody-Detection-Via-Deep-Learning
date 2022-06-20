@@ -10,10 +10,10 @@ def att_unet(config):
     :return: The assembled Attention U-Net model
     """
     # Get Backbone And Input Channels
-    _, backbone = get_model_config(config)
+    channels, backbone = get_model_config(config)
 
     # Construct Base Model
-    model = att_unet_2d((config['patch_size'], config['patch_size'], 32), [64, 128, 256, 512], n_labels=1, stack_num_down=2,
+    model = att_unet_2d((config['patch_size'], config['patch_size'], channels), [64, 128, 256, 512], n_labels=1, stack_num_down=2,
                         stack_num_up=2, activation='ReLU', atten_activation='ReLU', attention='add', output_activation="Sigmoid",
                         batch_norm=True, pool=False, unpool='bilinear', name='attunet', backbone=backbone)
     model.summary()

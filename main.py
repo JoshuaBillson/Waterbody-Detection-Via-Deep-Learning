@@ -55,8 +55,9 @@ def main():
     create_callback_dirs()
 
     # Train A Model For Each Experiment Specified In The Project Config
-    trained_models = []
-    for _ in range(get_num_experiments(config)):
+    results, num_experiments = [], get_num_experiments(config)
+    assert num_experiments > 0, "Error: Value for 'experiments' must be greater than 0!"
+    for _ in range(num_experiments):
 
         # Create Model
         model = get_model(config)
@@ -76,13 +77,14 @@ def main():
         # Train Model
         if config["train"]:
             model.fit(train_data, epochs=get_epochs(config)+initial_epoch, verbose=1, callbacks=callbacks, validation_data=val_data, initial_epoch=initial_epoch)
-            trained_models.append(model)
+
+        if config["test"]:
+            results.append(test_data.predict_batch(model, "test"))
         
     # Evaluate Performance Of All Models
     if config["test"]:
-        results = [test_data.predict_batch(m, "test") for m in trained_models]
         print("\nSUMMARY OF MODEL AVERAGES")
-        for result in zip(trained_models[0].metrics_names, *results):
+        for result in zip(model.metrics_names, *results):
             metric = result[0]
             average_value = sum(result[1:]) / len(result[1:])
             print(f"Model Average For {metric}:", average_value)

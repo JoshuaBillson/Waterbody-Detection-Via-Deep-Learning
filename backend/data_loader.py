@@ -1,3 +1,4 @@
+import gc
 import os
 import math
 import json
@@ -13,6 +14,7 @@ from typing import Tuple, Sequence, List, Dict, Any
 from tensorflow.image import flip_up_down, flip_left_right, rot90
 from tensorflow.keras.utils import Sequence as KerasSequence
 from tensorflow.keras.models import Model
+from tensorflow.keras.backend import clear_session
 from backend.utils import adjust_rgb
 from backend.metrics import MIOU
 from backend.config import get_patch_size, get_waterbody_transfer
@@ -21,9 +23,8 @@ from models.utils import evaluate_model
 
 class DataLoader:
     """A class to generate patches, load the dataset from disk, and show statistics."""
-    def __init__(self, tile_size: int = 1024, timestamp: int = 1):
+    def __init__(self, timestamp: int = 1):
         self.timestamp = timestamp
-        self.tile_size = tile_size
         self.folders = {1: "2018.04", 2: "2018.12", 3: "2019.02"}
 
     def get_rgb_features(self, patch_number: int, preprocess_img: bool = True) -> np.ndarray:
@@ -50,7 +51,7 @@ class DataLoader:
         """
         return self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/patches/swir/swir.{patch_number}.tif", preprocess_img=preprocess_img)
 
-    def get_mask(self, patch_number: int) -> np.ndarray:
+    def get_mask(self, patch_number: int, preprocess_img: bool = True) -> np.ndarray:
         """
         Get The Mask For The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
@@ -247,6 +248,10 @@ class ImgSequence(KerasSequence):
             plt.savefig(f"{model_directory}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
             plt.cla()
             plt.close()
+
+            # Housekeeping
+            gc.collect()
+            clear_session()
         
         # Save MIoU For Each Patch
         summary = np.array(MIoUs)

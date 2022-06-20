@@ -42,7 +42,7 @@ def get_model(config: Dict[str, Any]) -> Model:
               }
     if model in os.listdir("checkpoints"):
         base_model: Model = models[model.split(".")[0]](config)
-        base_model.load_weights(f"checkpoints/{model}/variables/variables")
+        base_model.load_weights(f"checkpoints/{model}/{model}")
         return base_model
     elif model in models:
         return models[model](config)

@@ -10,7 +10,8 @@ def u2net(config):
     :return: The assembled U2-Net model
     """
     # Construct Base Model
-    model = u2net_2d((config['patch_size'], config['patch_size'], 32), n_labels=1, filter_num_down=[64, 128, 256, 512],
+    channels, _ = get_model_config(config)
+    model = u2net_2d((config['patch_size'], config['patch_size'], channels), n_labels=1, filter_num_down=[64, 128, 256, 512],
                      filter_num_up=[64, 64, 128, 256], filter_mid_num_down=[32, 32, 64, 128], filter_mid_num_up=[16, 32, 64, 128],
                      filter_4f_num=[512, 512], filter_4f_mid_num=[256, 256], activation='ReLU', output_activation='Sigmoid',
                      batch_norm=True, pool=False, unpool=False, deep_supervision=True, name='u2net')
