@@ -26,7 +26,7 @@ def adjust_gamma(image: np.ndarray, gamma: float = 1.0):
     :returns: The gamma corrected image
     """
 
-    gamma = compute_gamma_correction(image)
+    gamma = compute_gamma_correction(image) if gamma == 1.0 else 1.0
     invGamma = (1 / gamma) + 0.2
     table = np.array([((i / 255.0) * invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return LUT(image, table)

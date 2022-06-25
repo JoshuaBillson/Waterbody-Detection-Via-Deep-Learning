@@ -1,25 +1,24 @@
 
 {
-  "generate_patches": false,
-  "show_data": false,
-  "show_samples": false,
   "timestamp": 1,
   "patch_size": 512,
   "experiment_tag": "baseline",
   "create_logs": true,
   "train": true,
   "test": true,
-  "experiments": 3, 
+  "experiments": 1, 
   "hyperparameters": {
-    "model": "att_unet",
+    "model": "fpn",
     "bands": ["RGB"],
     "backbone": null,
     "learning_rate": 0.00005,
     "fusion_head": "naive",
-    "loss": "jaccard", 
+    "loss": "jaccard_bce", 
     "batch_size": 4,
     "epochs": 50, 
-    "apply_transfer": false
+    "apply_transfer": false, 
+    "water_threshold": -1.0, 
+    "random_subsample": false
   }
 }
 

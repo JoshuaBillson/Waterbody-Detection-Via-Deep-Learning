@@ -152,3 +152,21 @@ def get_num_experiments(config: Dict[str, Any]) -> int:
     :returns: The number of experiments to run
     """
     return config["experiments"]
+
+
+def get_water_threshold(config: Dict[str, Any]) -> float:
+    """
+    Get the water threshold that patches must meet to avoid being discarded
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: The water threshold as a percentage that must be met by a patch to avoid being discarded
+    """
+    return config["hyperparameters"]["water_threshold"]
+
+
+def get_random_subsample(config: Dict[str, Any]) -> bool:
+    """
+    Get the setting for whether or not the data pipeline should sub-sample 512x512 patches
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: Whether or not to randomly sub-sample patches
+    """
+    return config["hyperparameters"]["random_subsample"]

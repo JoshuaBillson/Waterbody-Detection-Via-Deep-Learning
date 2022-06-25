@@ -3,7 +3,7 @@ import os
 from typing import Dict, Any, List
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import TensorBoard, CSVLogger, ModelCheckpoint, Callback, LearningRateScheduler, EarlyStopping
-from backend.data_loader import ImgSequence
+from backend.pipeline import ImgSequence
 from backend.config import get_create_logs
 
 
@@ -64,3 +64,11 @@ def create_callback_dirs() -> None:
     # Create Checkpoint Directory
     if "checkpoints" not in os.listdir():
         os.mkdir("checkpoints")
+
+    # Create Validation Directory
+    if "validation" not in os.listdir():
+        os.mkdir("validation")
+
+    # Create Test Directory
+    if "test" not in os.listdir():
+        os.mkdir("test")

@@ -13,11 +13,11 @@ def link_net(config: Dict[str, Any]) -> Model:
     :return: The assembled V-Net model
     """
     # Get Backbone And Input Channels
-    _, backbone = get_model_config(config)
+    channels, backbone = get_model_config(config)
 
     # Construct Base Model
     backbone = backbone if backbone is not None else "efficientnetb0"
-    model = Linknet(backbone_name=backbone, input_shape=(config["patch_size"], config['patch_size'], 1), classes=1, activation='sigmoid', encoder_weights=None, weights=None)
+    model = Linknet(backbone_name=backbone, input_shape=(config["patch_size"], config['patch_size'], channels), classes=1, activation='sigmoid', encoder_weights=None, weights=None)
     model.summary()
 
     # Replace Input And Output Layers

@@ -41,7 +41,7 @@ def main():
         bands = get_bands(config)
 
     # Create Batch To Evaluate On
-    samples = [2325, 1795, 1749, 1883]
+    samples = [2325, 2786, 3155, 1749]
     models = ["vnet.rgb.baseline.1", "vnet.rgb.modified_tanimoto_with_bce.1", "unet_plus.rgb.baseline.1", "unet_plus.rgb.modified_tanimoto_with_bce.1"]
     model_names = ["V-Net (Baseline)", "V-Net (Modified Tanimoto)", "U-Net++ (Baseline)", "U-Net++ (Modified Tanimoto)"]
     loader = DataLoader(timestamp=get_timestamp(config))
@@ -76,7 +76,7 @@ def main():
             axs[row][col].imshow(adjust_rgb(feature[band]) if band == "RGB" else feature[band])
             axs[row][col].axis("off")
             if row == 0:
-                axs[0][col].set_title(band if band != "mask" else "Ground Truth", fontsize=6)
+                axs[0][col].set_title(band if band != "mask" else "Ground Truth", fontsize=5)
     
     # Plot Predictions
     for row, prediction in enumerate(predictions):
@@ -85,11 +85,9 @@ def main():
             axs[row][col + col_offset].imshow(prediction[col])
             axs[row][col + col_offset].axis("off")
             if row == 0:
-                axs[0][col + col_offset].set_title(model, fontsize=6)
+                axs[0][col + col_offset].set_title(model, fontsize=5)
 
     # Save Figure To Disk
-    print(f"{directory}comparison.png")
-    sleep(5)
     plt.tight_layout()
     plt.savefig(f"{directory}{sys.argv[1]}.png", dpi=800, bbox_inches='tight')
     plt.close()

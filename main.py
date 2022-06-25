@@ -6,7 +6,7 @@ from tensorflow.keras.metrics import Recall, Precision
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import mixed_precision
 from backend.metrics import MIOU 
-from backend.data_loader import DataLoader, load_dataset
+from backend.pipeline import load_dataset
 from generate_patches import generate_patches
 from models import get_model
 from models.utils import evaluate_model
@@ -41,15 +41,12 @@ def main():
     with open('config.json') as f:
         config = json.loads(f.read())
 
-    # Create Data Loader
-    loader = DataLoader(timestamp=get_timestamp(config))
-
     # Generate Patches
-    if "patches" not in os.listdir(f"data/{get_timestamp_directory(config)}") or config["generate_patches"]:
-        generate_patches(loader=loader, config=config)
+    if "tiles" not in os.listdir(f"data/{get_timestamp_directory(config)}"):
+        generate_patches(config=config)
 
     # Load Dataset
-    train_data, val_data, test_data = load_dataset(loader, config)
+    train_data, val_data, test_data = load_dataset(config)
 
     # Create Callback Directories
     create_callback_dirs()
@@ -78,8 +75,15 @@ def main():
         if config["train"]:
             model.fit(train_data, epochs=get_epochs(config)+initial_epoch, verbose=1, callbacks=callbacks, validation_data=val_data, initial_epoch=initial_epoch)
 
+        # Evaluate Model On Test Set
         if config["test"]:
             results.append(test_data.predict_batch(model, "test"))
+        
+        # Save Experiment Configuration For Future Reference
+        if "experiments" not in os.listdir():
+            os.mkdir("experiments")
+        with open(f"experiments/{model.name}.json", 'w') as config_file:
+            config_file.write(json.dumps(config, indent=2))
         
     # Evaluate Performance Of All Models
     if config["test"]:

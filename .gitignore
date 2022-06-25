@@ -8,9 +8,7 @@ checkpoints
 predictions/
 predictions/*
 validation/
-foo/
 test/
-faz
-transfers
-augmentations
+old_data/
+experiments
 

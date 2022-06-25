@@ -1,0 +1,295 @@
+import gc
+import os
+import math
+import json
+import random
+import shutil
+import pandas
+import numpy as np
+import matplotlib.pyplot as plt
+from typing import Tuple, Sequence, List, Dict
+from tensorflow.image import flip_up_down, flip_left_right, rot90
+from tensorflow.keras.utils import Sequence as KerasSequence
+from tensorflow.keras.models import Model
+from tensorflow.keras.backend import clear_session
+from backend.utils import adjust_rgb
+from backend.metrics import MIOU
+from backend.config import get_timestamp, get_waterbody_transfer, get_random_subsample
+from models.utils import evaluate_model
+from backend.data_loader import DataLoader
+
+
+class ImgSequence(KerasSequence):
+    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False):
+        # Initialize Member Variables
+        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=random_subsample)
+        self.batch_size = batch_size
+        self.bands = ["RGB"] if bands is None else bands
+        self.indices = []
+        self.is_train = is_train
+
+        # Generate Patch Indices From Tiles
+        for tile in tiles:
+            self.indices += [((tile * 100) + patch_index) for patch_index in range(1, (10 if is_train else 5))]
+
+        # Shuffle Patches
+        if self.is_train:
+            np.random.shuffle(self.indices)
+
+    def __len__(self) -> int:
+        return math.ceil(len(self.indices) / self.batch_size)
+
+    def __getitem__(self, idx):
+        # Create Batch
+        feature_batches = {"RGB": [], "NIR": [], "SWIR": [], "mask": []}
+        batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
+        for b in batch:
+
+            # Get Mask And Features For Patch b
+            features = self._get_features(b)
+
+            # Augment Data
+            if self.is_train:
+                self.augment_features(features)
+            
+            # Add Features To Batch
+            for key, val in features.items():
+                feature_batches[key].append(DataLoader.normalize_channels(val.astype("float32")) if key != "mask" else val)
+
+        # Return Batch
+        return [np.array(feature_batches[band]).astype("float32") for band in ("RGB", "NIR", "SWIR") if len(feature_batches[band]) > 0], np.array(feature_batches["mask"]).astype("float32")
+    
+    def on_epoch_end(self):
+        if self.is_train:
+            np.random.shuffle(self.indices)
+    
+    def get_patch_indices(self) -> List[int]:
+        """
+        Get the patch indices for all patches in this dataset
+        :returns: The list of all patch indices in this dataset.
+        """
+        return list(self.indices)
+
+    def predict_batch(self, model: Model, directory: str):
+        """
+        Predict on a batch of feature samples and save the resulting prediction to disk alongside its mask and MIoU performance
+        :param batch: A list of patch indexes on which we want to predict
+        :param data_loader: An object for reading patches from the disk
+        :param model: The model whose prediction we are interested in
+        :param config: The script configuration stored as a dictionary; typically read from an external file
+        :param directory: The name of the directory in which we want to save the model predictions
+        :param threshold: We filter out patches whose water content percentage is below this value
+        :return: Nothing
+        """
+        # Create Directory To Save Predictions
+        if directory not in os.listdir():
+            os.mkdir(directory)
+        model_directory = f"{directory}/{model.name}"
+        if model.name in os.listdir(directory):
+            shutil.rmtree(model_directory)
+        os.mkdir(model_directory)
+
+        # Iterate Over All Patches In Batch
+        MIoUs, MIoU = [], MIOU()
+        for patch_index in self.indices:
+
+            # Load Features And Mask
+            features = self._get_features(patch_index)
+            mask = features["mask"]
+        
+            # Get Prediction
+            prediction = model.predict([np.array([DataLoader.normalize_channels(features[band].astype("float32"))]) for band in self.bands])
+            MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])
+
+            # Plot Features
+            i = 0
+            _, axs = plt.subplots(1, len(self.bands) + 2)
+            for band in self.bands:
+                axs[i].imshow(adjust_rgb(features[band], gamma=0.5) if band == "RGB" else features[band])
+                axs[i].set_title(band, fontsize=6)
+                axs[i].axis("off")
+                i += 1
+            
+            # Plot Ground Truth
+            axs[i].imshow(mask)
+            axs[i].set_title("Ground Truth", fontsize=6)
+            axs[i].axis("off")
+            i += 1
+
+            # Plot Prediction
+            axs[i].imshow(np.where(prediction < 0.5, 0, 1)[0])
+            axs[i].set_title(f"Prediction ({MIoUs[-1][1]:.3f})", fontsize=6)
+            axs[i].axis("off")
+            i += 1
+
+            # Save Prediction To Disk
+            plt.tight_layout()
+            plt.savefig(f"{model_directory}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
+            plt.cla()
+            plt.close()
+
+            # Housekeeping
+            gc.collect()
+            clear_session()
+        
+        # Save MIoU For Each Patch
+        summary = np.array(MIoUs)
+        df = pandas.DataFrame(summary[:, 1:], columns=["MIoU"], index=summary[:, 0].astype("int32"))
+        df.to_csv(f"{model_directory}/Evaluation.csv", index_label="patch")
+
+        # Evaluate Final Performance
+        results = evaluate_model(model, self)
+        df = pandas.DataFrame(np.reshape(np.array(results), (1, len(results))), columns=model.metrics_names)
+        df.to_csv(f"{model_directory}/Overview.csv", index=False)
+        return results
+    
+    def augment_features(self, features: Dict[str, np.ndarray]) -> None:
+        # Apply Random Horizontal/Vertical Flip with 50% Probability
+        self._rotate_patch(features)
+        self._flip_patch(features)
+    
+    def _rotate_patch(self, patch: Dict[str, np.ndarray]) -> None:
+        """Apply 90 degree clockwise rotation to a given patch with 25% probability"""
+        outcome = random.randint(1, 100)
+        if outcome <= 25:
+            for band in patch.keys():
+                patch[band] = rot90(patch[band], k=1).numpy()
+
+    def _flip_patch(self, patch: Dict[str, np.ndarray]) -> None:
+        """Apply a horizontal flip with 50% probability and a vertical flip with 50% probability to a given patch"""
+        outcome_1 = random.randint(1, 100)
+        outcome_2 = random.randint(1, 100)
+        for band in patch.keys():
+            patch[band] = flip_up_down(patch[band]).numpy() if outcome_1 <= 50 else patch[band]
+            patch[band] = flip_left_right(patch[band]).numpy() if outcome_2 <= 50 else patch[band]
+
+    def _water_content(self, mask: np.ndarray) -> float:
+        return np.sum(mask) / mask.size * 100.0
+    
+    def _get_features(self, patch: int, subsample: bool = True) -> Dict[str, np.ndarray]:
+        return self.data_loader.get_features(patch, self.bands, subsample=subsample)
+
+
+class SubSampleImgSequence(ImgSequence):
+    """A class to demonstrate the waterbody transfer method."""
+
+    def __getitem__(self, idx):
+        # Create Batch
+        feature_batches = {"RGB": [], "NIR": [], "SWIR": [], "mask": []}
+        batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
+        for b in batch:
+
+            # Get Mask And Features For Patch b
+            features = self._get_features(b)
+
+            # Randomly Sample 256 x 256 Sub-Patch
+            if self.is_train:
+                features = self.generate_composite(features)
+            
+            # Add Features To Batch
+            for key, val in features.items():
+                feature_batches[key].append(DataLoader.normalize_channels(val.astype("float32")) if key != "mask" else val)
+
+        # Return Batch
+        return [np.array(feature_batches[band]).astype("float32") for band in ("RGB", "NIR", "SWIR") if len(feature_batches[band]) > 0], np.array(feature_batches["mask"]).astype("float32")
+
+    def subsample_patch(self, patch: Dict[str, np.ndarray], sample_random: bool = False) -> Tuple[Dict[str, np.ndarray]]:
+        top_left, top_right, bottom_left, bottom_right = dict(), dict(), dict(), dict()
+        xs = [0, 256, 0, 256] if not sample_random else [random.randint(0, 256) for _ in range(4)]
+        ys = [0, 0, 256, 256] if not sample_random else [random.randint(0, 256) for _ in range(4)]
+        for band in patch.keys():
+            top_left[band] = patch[band][xs[0]:xs[0]+256, ys[0]:ys[0]+256, :]
+            top_right[band] = patch[band][xs[1]:xs[1]+256, ys[1]:ys[1]+256, :]
+            bottom_left[band] = patch[band][xs[2]:xs[2]+256, ys[2]:ys[2]+256, :]
+            bottom_right[band] = patch[band][xs[3]:xs[3]+256, ys[3]:ys[3]+256, :]
+        return top_left, top_right, bottom_left, bottom_right
+
+    def generate_composite(self, patch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        # Get Sub-Patches
+        top_left, top_right, bottom_left, bottom_right = self.subsample_patch(patch)
+
+        # Apply Rotations To Quarters
+        self._rotate_patch(top_left)
+        self._rotate_patch(top_right)
+        self._rotate_patch(bottom_left)
+        self._rotate_patch(bottom_right)
+
+        # Apply Flips To Quarters
+        self._flip_patch(top_left)
+        self._flip_patch(top_right)
+        self._flip_patch(bottom_left)
+        self._flip_patch(bottom_right)
+
+        # Generate Composite
+        return self._combine_quarters(top_left, top_right, bottom_left, bottom_right)
+
+    def _combine_quarters(self, top_left: Dict[str, np.ndarray], top_right: Dict[str, np.ndarray], bottom_left: Dict[str, np.ndarray], bottom_right: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        # Generate Random Ordering Of Quarters For Composite Image
+        quarter_indices = [0, 1, 2, 3]
+        random.shuffle(quarter_indices)
+
+        # Assemble Composite Image
+        composite = dict()
+        for band in top_left.keys():
+            if band == "RGB":
+                red_quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band][..., 0], top_right[band][..., 0], bottom_left[band][..., 0], bottom_right[band][..., 0]]]
+                green_quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band][..., 1], top_right[band][..., 1], bottom_left[band][..., 1], bottom_right[band][..., 1]]]
+                blue_quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band][..., 2], top_right[band][..., 2], bottom_left[band][..., 2], bottom_right[band][..., 2]]]
+
+                red_composite = np.reshape(np.array(np.bmat([[red_quarters[0], red_quarters[1]], [red_quarters[2], red_quarters[3]]])), (512, 512, 1))
+                green_composite = np.reshape(np.array(np.bmat([[green_quarters[0], green_quarters[1]], [green_quarters[2], green_quarters[3]]])), (512, 512, 1))
+                blue_composite = np.reshape(np.array(np.bmat([[blue_quarters[0], blue_quarters[1]], [blue_quarters[2], blue_quarters[3]]])), (512, 512, 1))
+
+                composite[band] = np.concatenate((red_composite, green_composite, blue_composite), axis=-1)
+            else:
+                quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band], top_right[band], bottom_left[band], bottom_right[band]]]
+                composite[band] = np.reshape(np.array(np.bmat([[quarters[0], quarters[1]], [quarters[2], quarters[3]]])), (512, 512, 1))
+        
+        return composite
+
+class TransferImgSequence(ImgSequence):
+    """A class to demonstrate the waterbody transfer method."""
+    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False):
+        # Initialize Member Variables
+        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=random_subsample)
+        self.batch_size = batch_size
+        self.bands = ["RGB"] if bands is None else bands
+        self.indices = tiles 
+        self.is_train = is_train
+
+        # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
+        self.transfer_patches = []
+        if self.is_train:
+            for tile_index in self.indices:
+                mask = self.data_loader.get_mask(tile_index)
+                if 5.0 < self._water_content(mask):
+                    print(tile_index, mask.shape, self._water_content(mask))
+                    self.transfer_patches.append(tile_index)
+
+
+def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
+    """
+    Load the training, validation, and test datasets
+    :param config: The script configuration encoded as a Python dictionary; typically read from an external file
+    :returns: The training, validation, and test data as a tuple of the form (train, validation, test)
+    """
+    # Read Parameters From Config File
+    bands = config["hyperparameters"]["bands"]
+    batch_size = config["hyperparameters"]["batch_size"]
+
+    # Read Batches From JSON File
+    with open(f"batches/tiles.json") as f:
+        batch_file = json.loads(f.read())
+    
+    # Choose Type Of Data Pipeline Based On Project Config
+    Constructor = ImgSequence
+    if get_waterbody_transfer(config):
+        Constructor = TransferImgSequence
+    # elif get_random_subsample(config):
+    #     Constructor = SubSampleImgSequence
+
+    # Create Train, Validation, And Test Data
+    train_data = Constructor(get_timestamp(config), batch_file["train"], batch_size=batch_size, bands=bands, is_train=True, random_subsample=get_random_subsample(config))
+    val_data = Constructor(get_timestamp(config), batch_file["validation"], batch_size=batch_size, bands=bands, is_train=False)
+    test_data = Constructor(get_timestamp(config), batch_file["test"], batch_size=batch_size, bands=bands, is_train=False)
+    return train_data, val_data, test_data
