@@ -11,7 +11,7 @@ from generate_patches import generate_patches
 from models import get_model
 from models.utils import evaluate_model
 from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate, get_timestamp_directory, get_num_experiments
-from models.losses import JaccardBCELoss, DiceBCELoss, JaccardLoss, focal_tversky, WeightedBCE, TanimotoLoss, TanimotoBCELoss, TanimotoLossWithComplement, TanimotoWithComplementBCELoss, ScheduledTanimoto
+from models.losses import JaccardBCELoss, DiceBCELoss, JaccardLoss, focal_tversky, WeightedBCE, TanimotoLoss, TanimotoBCELoss, TanimotoLossWithComplement, TanimotoWithComplementBCELoss, ScheduledTanimoto, tversky
 from backend.callbacks import get_callbacks, create_callback_dirs
 
 
@@ -32,6 +32,7 @@ def get_loss_function(config: Dict[str, Any]):
         "scheduled_tanimoto": ScheduledTanimoto(config),
         "weighted_bce": WeightedBCE(0.1, 0.9),
         "focal_tversky": focal_tversky,
+        "tversky": tversky,
         }
     return losses[config["hyperparameters"]["loss"]]
 

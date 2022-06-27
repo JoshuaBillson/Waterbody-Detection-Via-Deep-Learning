@@ -8,11 +8,11 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from backend.data_loader import DataLoader
-from backend.pipeline import ImgSequence, TransferImgSequence
-from backend.config import get_timestamp, get_bands, get_batch_size, get_timestamp_directory
+from backend.pipeline import ImgSequence, ImgSequence
+from backend.config import get_timestamp_directory
 from backend.utils import adjust_rgb
 
-class GenerateTransferImgSequence(TransferImgSequence):
+class GenerateTransferImgSequence(ImgSequence):
     """A class to demonstrate the waterbody transfer method."""
 
     def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = True, random_subsample: bool = True):
@@ -169,11 +169,21 @@ def main():
         batches = json.loads(f.read())
 
     # Create Data Loader
-    data = GenerateTransferImgSequence(timestamp=get_timestamp(config), batch_size=1, bands=["RGB", "NIR", "SWIR"], tiles=batches["train"], is_train=True)
+    # data = GenerateTransferImgSequence(timestamp=get_timestamp(config), batch_size=1, bands=["RGB", "NIR", "SWIR"], tiles=batches["train"], is_train=True)
 
     # Run Transfer
-    data.run_waterbody_transfer(config)
-    # data.show_waterbody_transfer()
+    # data.run_waterbody_transfer(config)
+
+    # Add Transplanted Tiles To Train Data
+    transplanted_tiles = list(filter(lambda x: ".tif" in x, os.listdir(f"data/{get_timestamp_directory(config)}/transplanted_tiles/mask")))
+    transplanted_tile_indices = list(map(lambda x: int(x.split(".")[1]), transplanted_tiles))
+    batches["train"] += transplanted_tile_indices
+    random.shuffle(batches["train"])
+
+    # Save Batches To Disk
+    if "transplanted.json" not in os.listdir("batches"):
+        with open("batches/transplanted.json", 'w') as batch_file:
+            batch_file.write(json.dumps(batches, indent=2))
 
 
 if __name__ == "__main__":

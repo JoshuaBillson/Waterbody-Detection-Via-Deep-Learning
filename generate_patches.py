@@ -254,9 +254,9 @@ def plot_samples(rgb_samples: Sequence[np.ndarray], nir_samples: Sequence[np.nda
         ax[0].axis("off")
         ax[1].imshow(adjust_rgb(rgb_sample, gamma=0.8))
         ax[1].axis("off")
-        ax[2].imshow(DataLoader.threshold_channel(nir_sample))
+        ax[2].imshow(np.clip(nir_sample, a_min=0, a_max=3000))
         ax[2].axis("off")
-        ax[3].imshow(DataLoader.threshold_channel(swir_sample))
+        ax[3].imshow(np.clip(swir_sample, a_min=0, a_max=3000))
         ax[3].axis("off")
 
     # Save Figure

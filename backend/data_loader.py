@@ -13,44 +13,44 @@ class DataLoader:
         self.overlapping_patches = overlapping_patches
         self.random_subsample = random_subsample
 
-    def get_rgb_features(self, tile_number: int, coords: Tuple[int, int] = (0, 0), preprocess_img: bool = True) -> np.ndarray:
+    def get_rgb_features(self, tile_number: int, coords: Tuple[int, int] = (0, 0), preprocess_img: bool = True, tile_dir: str = "tiles") -> np.ndarray:
         """
         Get RGB Features Matching The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The RGB features of the matching patch,
         """
-        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/tiles/rgb/rgb.{tile_number}.tif", preprocess_img=preprocess_img)
+        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/{tile_dir}/rgb/rgb.{tile_number}.tif", preprocess_img=preprocess_img)
         return self.subsample_tile(tile, coords=coords) if coords is not None else tile
 
-    def get_nir_features(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True) -> np.ndarray:
+    def get_nir_features(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True, tile_dir: str = "tiles") -> np.ndarray:
         """
         Get NIR Features Matching The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The NIR features of the matching patch,
         """
-        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/tiles/nir/nir.{tile_number}.tif", preprocess_img=preprocess_img)
+        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/{tile_dir}/nir/nir.{tile_number}.tif", preprocess_img=preprocess_img)
         return self.subsample_tile(tile, coords=coords) if coords is not None else tile
 
-    def get_swir_features(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True) -> np.ndarray:
+    def get_swir_features(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True, tile_dir: str = "tiles") -> np.ndarray:
         """
         Get SWIR Features Matching The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The SWIR features of the matching patch,
         """
-        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/tiles/swir/swir.{tile_number}.tif", preprocess_img=preprocess_img)
+        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/{tile_dir}/swir/swir.{tile_number}.tif", preprocess_img=preprocess_img)
         tile = np.resize(cv2.resize(tile, (1024, 1024), interpolation = cv2.INTER_AREA), (1024, 1024, 1))
         return self.subsample_tile(tile, coords=coords) if coords is not None else tile
 
-    def get_mask(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True) -> np.ndarray:
+    def get_mask(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True, tile_dir: str = "tiles") -> np.ndarray:
         """
         Get The Mask For The Given Patch Number
         :param patch_number: The number of the patch we want to retrieve which must be in the range [min_patch, max_patch]
         :return: The mark of the matching patch.
         """
-        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/tiles/mask/mask.{tile_number}.tif")
+        tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/{tile_dir}/mask/mask.{tile_number}.tif")
         return self.subsample_tile(tile, coords=coords) if coords is not None else tile
 
-    def get_features(self, patch: int, bands: List[str], subsample: bool = True) -> Dict[str, np.ndarray]:
+    def get_features(self, patch: int, bands: List[str], subsample: bool = True, tile_dir: str = "tiles") -> Dict[str, np.ndarray]:
         # Get Coords Of Patch Inside Tile
         coords, tile_index = None, patch
         if subsample:
@@ -59,19 +59,19 @@ class DataLoader:
             coords = self.get_patch_coords(patch_index)
 
         # Get Mask
-        features = {"mask": self.get_mask(tile_index, coords=coords, preprocess_img=False)}
+        features = {"mask": self.get_mask(tile_index, coords=coords, preprocess_img=False, tile_dir=tile_dir)}
 
         # Get RGB Features
         if "RGB" in bands:
-            features["RGB"] = self.get_rgb_features(tile_index, preprocess_img=False, coords=coords)
+            features["RGB"] = self.get_rgb_features(tile_index, preprocess_img=False, coords=coords, tile_dir=tile_dir)
 
         # Get NIR Features
         if "NIR" in bands:
-            features["NIR"] = self.get_nir_features(tile_index, preprocess_img=False, coords=coords)
+            features["NIR"] = self.get_nir_features(tile_index, preprocess_img=False, coords=coords, tile_dir=tile_dir)
 
         # Get SWIR Features
         if "SWIR" in bands:
-            features["SWIR"] = self.get_swir_features(tile_index, preprocess_img=False, coords=coords)
+            features["SWIR"] = self.get_swir_features(tile_index, preprocess_img=False, coords=coords, tile_dir=tile_dir)
 
         return features
     

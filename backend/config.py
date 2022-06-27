@@ -50,7 +50,7 @@ def get_input_channels(config: Dict[str, Any]) -> int:
         "SWIR": 1,
         "RGB+NIR": 4,
         "RGB+SWIR": 4,
-        "RGB+NIR+SWIR": {"naive": 5, "depthwise": 128, "3D": 125, "paper": 128}[get_fusion_head(config)],
+        "RGB+NIR+SWIR": {"naive": 5, "depthwise": 128, "3D": 125, "paper": 128, "grayscale": 3}[get_fusion_head(config)],
     }
     return channels["+".join(get_bands(config))]
 

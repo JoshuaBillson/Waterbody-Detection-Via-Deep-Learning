@@ -43,7 +43,7 @@ def get_callbacks(config: Dict[str, Any], val_data: ImgSequence, model: Model) -
     checkpoint = ModelCheckpoint(f"checkpoints/{model.name}/{model.name}", save_best_only=False, monitor='val_loss', mode='min', save_weights_only=True)
     prediction_logger = PredictionCallback(val_data, model)
     learning_rate_scheduler = LearningRateScheduler(lr_scheduler)
-    early_stopping = EarlyStopping(monitor="val_MIoU", min_delta=0.0005, patience=10, verbose=1, mode="max")
+    early_stopping = EarlyStopping(monitor="val_loss", min_delta=0.0001, patience=15, verbose=1, mode="min")
     return [tensorboard, csv, checkpoint, prediction_logger, learning_rate_scheduler, early_stopping] if get_create_logs(config) else [learning_rate_scheduler, early_stopping]
 
 

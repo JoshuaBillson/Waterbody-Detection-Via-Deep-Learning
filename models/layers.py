@@ -1,6 +1,7 @@
 from typing import  Dict, Any
+import tensorflow as tf
 from tensorflow.keras.activations import swish
-from tensorflow.keras.layers import Conv2D, Conv3D, DepthwiseConv2D, Layer, concatenate, Reshape
+from tensorflow.keras.layers import Conv2D, Conv3D, DepthwiseConv2D, Layer, concatenate, Reshape, Lambda
 from backend.config import get_fusion_head
 
 
@@ -17,7 +18,8 @@ def rgb_nir_swir_input_layer(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: 
         "naive": fusion_head_naive,
         "depthwise": fusion_head_depthwise,
         "3D": fusion_head_3d,
-        "paper": fusion_head_paper
+        "paper": fusion_head_paper, 
+        "grayscale": fusion_head_grayscale, 
     }
     return fusion_heads[get_fusion_head(config)](rgb_inputs, nir_inputs, swir_inputs)
 
@@ -76,4 +78,22 @@ def fusion_head_paper(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) 
 
     concat = concatenate([rgb_conv, nir_conv, swir_conv], axis=3)
 
+    return concat
+
+
+def fusion_head_grayscale(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> Layer:
+    """
+    A layer which combines RGB, NIR, and SWIR inputs by transforming the RGB bands to grayscale
+    :param rgb_inputs: The input layer for RGB features
+    :param nir_inputs: The input layer for NIR features
+    :param swir_inputs: The input layer for SWIR features
+    :returns: The fusion head as a Keras layer
+    """
+    # Turn RGB Band To Grayscale
+    grayscale = Lambda(tf.image.rgb_to_grayscale)(rgb_inputs)
+
+    # Concat Inputs
+    concat = concatenate([grayscale, nir_inputs, swir_inputs], axis=3)
+
+    # Return Final Layer
     return concat

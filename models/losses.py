@@ -2,7 +2,7 @@ from math import ceil
 from typing import Tuple
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.backend import flatten, sum, dot, pow, mean
+from tensorflow.keras.backend import flatten, sum, dot, pow, mean, ones_like
 from tensorflow.keras.losses import binary_crossentropy
 from tensorflow.keras import backend as K
 from backend.config import get_epochs, get_batch_size
@@ -146,14 +146,10 @@ def tversky(y_true, y_pred, smooth=1e-6):
     y_true_pos = flatten(y_true)
     y_pred_pos = flatten(y_pred)
     true_pos = sum(y_true_pos * y_pred_pos)
-    false_neg = sum(y_true_pos * (1-y_pred_pos))
-    false_pos = sum((1-y_true_pos)*y_pred_pos)
+    false_neg = sum(y_true_pos * (ones_like(y_pred_pos) - y_pred_pos))
+    false_pos = sum((ones_like(y_true_pos) - y_true_pos) * y_pred_pos)
     alpha = 0.7
-    return (true_pos + smooth)/(true_pos + alpha*false_neg + (1-alpha)*false_pos + smooth)
-
-
-def tversky_loss(y_true, y_pred):
-    return 1 - tversky(y_true,y_pred)
+    return 1 - ((true_pos + smooth)/(true_pos + alpha*false_neg + (1-alpha)*false_pos + smooth))
 
 
 def focal_tversky(y_true,y_pred):

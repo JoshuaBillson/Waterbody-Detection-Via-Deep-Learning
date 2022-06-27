@@ -22,7 +22,7 @@ from backend.data_loader import DataLoader
 class ImgSequence(KerasSequence):
     def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False):
         # Initialize Member Variables
-        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=random_subsample)
+        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=(random_subsample and is_train))
         self.batch_size = batch_size
         self.bands = ["RGB"] if bands is None else bands
         self.indices = []
@@ -170,101 +170,11 @@ class ImgSequence(KerasSequence):
         return self.data_loader.get_features(patch, self.bands, subsample=subsample)
 
 
-class SubSampleImgSequence(ImgSequence):
-    """A class to demonstrate the waterbody transfer method."""
-
-    def __getitem__(self, idx):
-        # Create Batch
-        feature_batches = {"RGB": [], "NIR": [], "SWIR": [], "mask": []}
-        batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
-        for b in batch:
-
-            # Get Mask And Features For Patch b
-            features = self._get_features(b)
-
-            # Randomly Sample 256 x 256 Sub-Patch
-            if self.is_train:
-                features = self.generate_composite(features)
-            
-            # Add Features To Batch
-            for key, val in features.items():
-                feature_batches[key].append(DataLoader.normalize_channels(val.astype("float32")) if key != "mask" else val)
-
-        # Return Batch
-        return [np.array(feature_batches[band]).astype("float32") for band in ("RGB", "NIR", "SWIR") if len(feature_batches[band]) > 0], np.array(feature_batches["mask"]).astype("float32")
-
-    def subsample_patch(self, patch: Dict[str, np.ndarray], sample_random: bool = False) -> Tuple[Dict[str, np.ndarray]]:
-        top_left, top_right, bottom_left, bottom_right = dict(), dict(), dict(), dict()
-        xs = [0, 256, 0, 256] if not sample_random else [random.randint(0, 256) for _ in range(4)]
-        ys = [0, 0, 256, 256] if not sample_random else [random.randint(0, 256) for _ in range(4)]
-        for band in patch.keys():
-            top_left[band] = patch[band][xs[0]:xs[0]+256, ys[0]:ys[0]+256, :]
-            top_right[band] = patch[band][xs[1]:xs[1]+256, ys[1]:ys[1]+256, :]
-            bottom_left[band] = patch[band][xs[2]:xs[2]+256, ys[2]:ys[2]+256, :]
-            bottom_right[band] = patch[band][xs[3]:xs[3]+256, ys[3]:ys[3]+256, :]
-        return top_left, top_right, bottom_left, bottom_right
-
-    def generate_composite(self, patch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        # Get Sub-Patches
-        top_left, top_right, bottom_left, bottom_right = self.subsample_patch(patch)
-
-        # Apply Rotations To Quarters
-        self._rotate_patch(top_left)
-        self._rotate_patch(top_right)
-        self._rotate_patch(bottom_left)
-        self._rotate_patch(bottom_right)
-
-        # Apply Flips To Quarters
-        self._flip_patch(top_left)
-        self._flip_patch(top_right)
-        self._flip_patch(bottom_left)
-        self._flip_patch(bottom_right)
-
-        # Generate Composite
-        return self._combine_quarters(top_left, top_right, bottom_left, bottom_right)
-
-    def _combine_quarters(self, top_left: Dict[str, np.ndarray], top_right: Dict[str, np.ndarray], bottom_left: Dict[str, np.ndarray], bottom_right: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        # Generate Random Ordering Of Quarters For Composite Image
-        quarter_indices = [0, 1, 2, 3]
-        random.shuffle(quarter_indices)
-
-        # Assemble Composite Image
-        composite = dict()
-        for band in top_left.keys():
-            if band == "RGB":
-                red_quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band][..., 0], top_right[band][..., 0], bottom_left[band][..., 0], bottom_right[band][..., 0]]]
-                green_quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band][..., 1], top_right[band][..., 1], bottom_left[band][..., 1], bottom_right[band][..., 1]]]
-                blue_quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band][..., 2], top_right[band][..., 2], bottom_left[band][..., 2], bottom_right[band][..., 2]]]
-
-                red_composite = np.reshape(np.array(np.bmat([[red_quarters[0], red_quarters[1]], [red_quarters[2], red_quarters[3]]])), (512, 512, 1))
-                green_composite = np.reshape(np.array(np.bmat([[green_quarters[0], green_quarters[1]], [green_quarters[2], green_quarters[3]]])), (512, 512, 1))
-                blue_composite = np.reshape(np.array(np.bmat([[blue_quarters[0], blue_quarters[1]], [blue_quarters[2], blue_quarters[3]]])), (512, 512, 1))
-
-                composite[band] = np.concatenate((red_composite, green_composite, blue_composite), axis=-1)
-            else:
-                quarters = [np.reshape(quarter, (256, 256)) for quarter in [top_left[band], top_right[band], bottom_left[band], bottom_right[band]]]
-                composite[band] = np.reshape(np.array(np.bmat([[quarters[0], quarters[1]], [quarters[2], quarters[3]]])), (512, 512, 1))
-        
-        return composite
-
-class TransferImgSequence(ImgSequence):
-    """A class to demonstrate the waterbody transfer method."""
-    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False):
-        # Initialize Member Variables
-        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=random_subsample)
-        self.batch_size = batch_size
-        self.bands = ["RGB"] if bands is None else bands
-        self.indices = tiles 
-        self.is_train = is_train
-
-        # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
-        self.transfer_patches = []
-        if self.is_train:
-            for tile_index in self.indices:
-                mask = self.data_loader.get_mask(tile_index)
-                if 5.0 < self._water_content(mask):
-                    print(tile_index, mask.shape, self._water_content(mask))
-                    self.transfer_patches.append(tile_index)
+class WaterbodyTransferImgSequence(ImgSequence):
+    """A data pipeline that returns tiles with transplanted waterbodies"""
+    def _get_features(self, patch: int, subsample: bool = True) -> Dict[str, np.ndarray]:
+        tile_index = patch // 100
+        return self.data_loader.get_features(patch, self.bands, tile_dir="tiles" if tile_index <= 400 else "transplanted_tiles")
 
 
 def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
@@ -278,18 +188,15 @@ def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
     batch_size = config["hyperparameters"]["batch_size"]
 
     # Read Batches From JSON File
-    with open(f"batches/tiles.json") as f:
+    batch_filename = "batches/transplanted.json" if get_waterbody_transfer(config) else "batches/tiles.json"
+    with open(batch_filename) as f:
         batch_file = json.loads(f.read())
     
     # Choose Type Of Data Pipeline Based On Project Config
-    Constructor = ImgSequence
-    if get_waterbody_transfer(config):
-        Constructor = TransferImgSequence
-    # elif get_random_subsample(config):
-    #     Constructor = SubSampleImgSequence
+    Constructor = WaterbodyTransferImgSequence if get_waterbody_transfer(config) else ImgSequence
 
     # Create Train, Validation, And Test Data
     train_data = Constructor(get_timestamp(config), batch_file["train"], batch_size=batch_size, bands=bands, is_train=True, random_subsample=get_random_subsample(config))
-    val_data = Constructor(get_timestamp(config), batch_file["validation"], batch_size=batch_size, bands=bands, is_train=False)
-    test_data = Constructor(get_timestamp(config), batch_file["test"], batch_size=batch_size, bands=bands, is_train=False)
+    val_data = ImgSequence(get_timestamp(config), batch_file["validation"], batch_size=batch_size, bands=bands, is_train=False)
+    test_data = ImgSequence(get_timestamp(config), batch_file["test"], batch_size=batch_size, bands=bands, is_train=False)
     return train_data, val_data, test_data

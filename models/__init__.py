@@ -15,6 +15,7 @@ from models.att_unet import att_unet
 from models.fpn import fpn
 from models.link_net import link_net
 from models.psp_net import psp_net
+from models.deeplab import DeeplabV3Plus
 from backend.config import get_model_type
 
 
@@ -39,8 +40,10 @@ def get_model(config: Dict[str, Any]) -> Model:
               "fpn": fpn,
               "psp_net": psp_net,
               "link_net": link_net,
+              "deeplab": DeeplabV3Plus, 
               }
     if model in os.listdir("checkpoints"):
+        print(model)
         base_model: Model = models[model.split(".")[0]](config)
         base_model.load_weights(f"checkpoints/{model}/{model}")
         return base_model
