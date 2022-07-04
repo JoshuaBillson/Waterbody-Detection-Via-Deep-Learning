@@ -29,7 +29,7 @@ def create_rgb_and_nir_tiles(config: Dict[str, Any]) -> None:
     plt.savefig(f"images/features/{directory}/rgb_features.png", dpi=2500, bbox_inches='tight')
     plt.close()
 
-    plt.imshow(DataLoader.threshold_channel(img[..., 3:]))
+    plt.imshow(np.clip(img[..., 3:], a_min=0, a_max=3000))
     plt.savefig(f"images/features/{directory}/nir_features.png", dpi=2500, bbox_inches='tight')
     plt.close()
 
@@ -53,7 +53,7 @@ def create_swir_tiles(config: Dict[str, Any]) -> None:
     print("DONE READING SWIR")
 
     # Plot SWIR Features
-    plt.imshow(DataLoader.threshold_channel(img))
+    plt.imshow(np.clip(img, a_min=0, a_max=3000))
     plt.savefig(f"images/features/{get_timestamp_directory(config)}/swir_features.png", dpi=2500, bbox_inches='tight')
     plt.close()
 
@@ -215,7 +215,7 @@ def create_directory(path: str, delete_old: bool = False) -> None:
 def show_samples(loader: DataLoader, config) -> None:
     """Visualize A Selection Of Patches"""
     rgb_samples, nir_samples, swir_samples, mask_samples = [], [], [], []
-    for patch in [15009, 26809, 38902, 16801]:
+    for patch in [26809, 38902, 16801]:
         features = loader.get_features(patch, ["mask", "RGB", "NIR", "SWIR"])
         for band in features.keys():
             if band == "mask":
@@ -242,7 +242,7 @@ def plot_samples(rgb_samples: Sequence[np.ndarray], nir_samples: Sequence[np.nda
 
     # Create Subplots
     num_samples = min(len(rgb_samples), len(nir_samples), len(swir_samples), len(mask_samples))
-    _, axs = plt.subplots(num_samples, 4, figsize=(4, 4))
+    _, axs = plt.subplots(num_samples, 4, figsize=(4, num_samples))
 
     # Label Columns
     for ax, col in zip(axs[0], ["Mask", "RGB", "Nir", "Swir"]):

@@ -1,6 +1,7 @@
 import gc
 import os
 import math
+import statistics
 import json
 import random
 import shutil
@@ -14,15 +15,15 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.backend import clear_session
 from backend.utils import adjust_rgb
 from backend.metrics import MIOU
-from backend.config import get_timestamp, get_waterbody_transfer, get_random_subsample
+from backend.config import get_timestamp, get_waterbody_transfer, get_random_subsample, get_fusion_head, get_water_threshold
 from models.utils import evaluate_model
 from backend.data_loader import DataLoader
 
 
 class ImgSequence(KerasSequence):
-    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False):
+    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False, upscale_swir: bool = True):
         # Initialize Member Variables
-        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=(random_subsample and is_train))
+        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=(random_subsample and is_train), upscale_swir=upscale_swir)
         self.batch_size = batch_size
         self.bands = ["RGB"] if bands is None else bands
         self.indices = []
@@ -39,7 +40,7 @@ class ImgSequence(KerasSequence):
     def __len__(self) -> int:
         return math.ceil(len(self.indices) / self.batch_size)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, normalize_data=True):
         # Create Batch
         feature_batches = {"RGB": [], "NIR": [], "SWIR": [], "mask": []}
         batch = self.indices[idx*self.batch_size:(idx+1)*self.batch_size]
@@ -54,7 +55,10 @@ class ImgSequence(KerasSequence):
             
             # Add Features To Batch
             for key, val in features.items():
-                feature_batches[key].append(DataLoader.normalize_channels(val.astype("float32")) if key != "mask" else val)
+                if normalize_data:
+                    feature_batches[key].append(DataLoader.normalize_channels(val.astype("float32")) if key != "mask" else val)
+                else:
+                    feature_batches[key].append(val)
 
         # Return Batch
         return [np.array(feature_batches[band]).astype("float32") for band in ("RGB", "NIR", "SWIR") if len(feature_batches[band]) > 0], np.array(feature_batches["mask"]).astype("float32")
@@ -90,52 +94,63 @@ class ImgSequence(KerasSequence):
         os.mkdir(model_directory)
 
         # Iterate Over All Patches In Batch
-        MIoUs, MIoU = [], MIOU()
-        for patch_index in self.indices:
+        MIoUs, MIoU, i = [], MIOU(), 0
+        for batch in range(len(self)):
 
-            # Load Features And Mask
-            features = self._get_features(patch_index)
-            mask = features["mask"]
-        
+            # Get Batch
+            features, masks = self.__getitem__(batch, normalize_data=False)
+            normalized_features, _ = self.__getitem__(batch)
+            rgb_features = features[0] if "RGB" in self.bands else None
+            nir_features = features[1 if "RGB" in self.bands else 0] if "NIR" in self.bands else None
+            swir_features = features[2] if "SWIR" in self.bands else None
+
             # Get Prediction
-            prediction = model.predict([np.array([DataLoader.normalize_channels(features[band].astype("float32"))]) for band in self.bands])
-            MIoUs.append([patch_index, MIoU(mask.astype("float32"), prediction).numpy()])
+            predictions = model.predict(normalized_features)
 
-            # Plot Features
-            i = 0
-            _, axs = plt.subplots(1, len(self.bands) + 2)
-            for band in self.bands:
-                axs[i].imshow(adjust_rgb(features[band], gamma=0.5) if band == "RGB" else features[band])
-                axs[i].set_title(band, fontsize=6)
-                axs[i].axis("off")
+            # Iterate Over Each Prediction In The Batch
+            for p in range(predictions.shape[0]):
+
+                mask = masks[p, ...]
+                prediction = predictions[p, ...]
+                MIoUs.append([self.indices[i], MIoU(mask, prediction).numpy()])
+
+                # Plot Features
+                col = 0
+                _, axs = plt.subplots(1, len(self.bands) + 2)
+                for band, feature in zip(["RGB", "NIR", "SWIR"], [rgb_features, nir_features, swir_features]):
+                    if feature is not None:
+                        axs[col].imshow(adjust_rgb(feature[p, ...], gamma=0.5) if feature.shape[-1] == 3 else feature[p, ...])
+                        axs[col].set_title(band, fontsize=6)
+                        axs[col].axis("off")
+                        col += 1
+                
+                # Plot Ground Truth
+                axs[col].imshow(mask)
+                axs[col].set_title("Ground Truth", fontsize=6)
+                axs[col].axis("off")
+                col += 1
+
+                # Plot Prediction
+                axs[col].imshow(np.where(prediction < 0.5, 0, 1))
+                axs[col].set_title(f"Prediction ({MIoUs[-1][1]:.3f})", fontsize=6)
+                axs[col].axis("off")
+                col += 1
+
+                # Save Prediction To Disk
+                plt.tight_layout()
+                plt.savefig(f"{model_directory}/prediction.{self.indices[i]}.png", dpi=300, bbox_inches='tight')
+                plt.cla()
+                plt.close()
+
+                # Housekeeping
+                gc.collect()
+                clear_session()
                 i += 1
-            
-            # Plot Ground Truth
-            axs[i].imshow(mask)
-            axs[i].set_title("Ground Truth", fontsize=6)
-            axs[i].axis("off")
-            i += 1
-
-            # Plot Prediction
-            axs[i].imshow(np.where(prediction < 0.5, 0, 1)[0])
-            axs[i].set_title(f"Prediction ({MIoUs[-1][1]:.3f})", fontsize=6)
-            axs[i].axis("off")
-            i += 1
-
-            # Save Prediction To Disk
-            plt.tight_layout()
-            plt.savefig(f"{model_directory}/prediction.{patch_index}.png", dpi=300, bbox_inches='tight')
-            plt.cla()
-            plt.close()
-
-            # Housekeeping
-            gc.collect()
-            clear_session()
         
         # Save MIoU For Each Patch
-        summary = np.array(MIoUs)
-        df = pandas.DataFrame(summary[:, 1:], columns=["MIoU"], index=summary[:, 0].astype("int32"))
-        df.to_csv(f"{model_directory}/Evaluation.csv", index_label="patch")
+        # summary = np.array(MIoUs)
+        # df = pandas.DataFrame(summary[:, 1:], columns=["MIoU"], index=summary[:, 0].astype("int32"))
+        # df.to_csv(f"{model_directory}/Evaluation.csv", index_label="patch")
 
         # Evaluate Final Performance
         results = evaluate_model(model, self)
@@ -171,10 +186,14 @@ class ImgSequence(KerasSequence):
 
 
 class WaterbodyTransferImgSequence(ImgSequence):
+    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = False, random_subsample: bool = False, upscale_swir: bool = True, water_threshold: int = 5):
+        super().__init__(timestamp, tiles, batch_size, bands, is_train, random_subsample, upscale_swir)
+        self.water_threshold = water_threshold
+
     """A data pipeline that returns tiles with transplanted waterbodies"""
     def _get_features(self, patch: int, subsample: bool = True) -> Dict[str, np.ndarray]:
         tile_index = patch // 100
-        return self.data_loader.get_features(patch, self.bands, tile_dir="tiles" if tile_index <= 400 else "transplanted_tiles")
+        return self.data_loader.get_features(patch, self.bands, tile_dir="tiles" if tile_index <= 400 else f"transplanted_tiles_{self.water_threshold}")
 
 
 def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
@@ -188,7 +207,8 @@ def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
     batch_size = config["hyperparameters"]["batch_size"]
 
     # Read Batches From JSON File
-    batch_filename = "batches/transplanted.json" if get_waterbody_transfer(config) else "batches/tiles.json"
+    water_threshold = get_water_threshold(config)
+    batch_filename = f"batches/transplanted_tiles_{water_threshold}.json" if get_waterbody_transfer(config) else "batches/tiles.json"
     with open(batch_filename) as f:
         batch_file = json.loads(f.read())
     
@@ -196,7 +216,11 @@ def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
     Constructor = WaterbodyTransferImgSequence if get_waterbody_transfer(config) else ImgSequence
 
     # Create Train, Validation, And Test Data
-    train_data = Constructor(get_timestamp(config), batch_file["train"], batch_size=batch_size, bands=bands, is_train=True, random_subsample=get_random_subsample(config))
-    val_data = ImgSequence(get_timestamp(config), batch_file["validation"], batch_size=batch_size, bands=bands, is_train=False)
-    test_data = ImgSequence(get_timestamp(config), batch_file["test"], batch_size=batch_size, bands=bands, is_train=False)
+    upscale_swir = get_fusion_head(config) != "paper"
+    if get_waterbody_transfer(config):
+        train_data = WaterbodyTransferImgSequence(get_timestamp(config), batch_file["train"], batch_size=batch_size, bands=bands, is_train=True, random_subsample=get_random_subsample(config), upscale_swir=upscale_swir, water_threshold=water_threshold)
+    else:
+        train_data = ImgSequence(get_timestamp(config), batch_file["train"], batch_size=batch_size, bands=bands, is_train=True, random_subsample=get_random_subsample(config), upscale_swir=upscale_swir)
+    val_data = ImgSequence(get_timestamp(config), batch_file["validation"], batch_size=12, bands=bands, is_train=False, upscale_swir=upscale_swir)
+    test_data = ImgSequence(get_timestamp(config), batch_file["test"], batch_size=12, bands=bands, is_train=False, upscale_swir=upscale_swir)
     return train_data, val_data, test_data

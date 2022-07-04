@@ -154,15 +154,6 @@ def get_num_experiments(config: Dict[str, Any]) -> int:
     return config["experiments"]
 
 
-def get_water_threshold(config: Dict[str, Any]) -> float:
-    """
-    Get the water threshold that patches must meet to avoid being discarded
-    :param config: A dictionary storing the project configuration; typically loaded from an external file
-    :returns: The water threshold as a percentage that must be met by a patch to avoid being discarded
-    """
-    return config["hyperparameters"]["water_threshold"]
-
-
 def get_random_subsample(config: Dict[str, Any]) -> bool:
     """
     Get the setting for whether or not the data pipeline should sub-sample 512x512 patches
@@ -170,3 +161,21 @@ def get_random_subsample(config: Dict[str, Any]) -> bool:
     :returns: Whether or not to randomly sub-sample patches
     """
     return config["hyperparameters"]["random_subsample"]
+
+
+def get_water_threshold(config: Dict[str, Any]) -> int:
+    """
+    Get the water threshold for waterbody transfer
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: The content threshold (percent) to be applied to waterbody transfer
+    """
+    return config["hyperparameters"]["water_threshold"]
+    
+
+def get_mixed_precision(config: Dict[str, Any]) -> bool:
+    """
+    Return True if we want to use mixed precision to speed up trainig/inference at the cost of accuracy
+    :param config: A dictionary storing the project configuration; typically loaded from an external file
+    :returns: A boolean indicating whether or not we want to use mixed precision
+    """
+    return config["use_mixed_precision"]

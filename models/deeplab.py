@@ -6,7 +6,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 
 
-def convolution_block(block_input, num_filters=256, kernel_size=3, dilation_rate=1, padding="same", use_bias=False,):
+def convolution_block(block_input, num_filters=256, kernel_size=3, dilation_rate=1, use_bias=False,):
     x = layers.Conv2D(num_filters, kernel_size=kernel_size, dilation_rate=dilation_rate, padding="same", use_bias=use_bias, kernel_initializer=keras.initializers.HeNormal())(block_input)
     x = layers.BatchNormalization()(x)
     return tf.nn.relu(x)
@@ -31,7 +31,7 @@ def DilatedSpatialPyramidPooling(dspp_input):
 def DeeplabV3Plus(config):
     image_size = get_patch_size(config)
     inputs, model_input = deeplab_input(config)
-    resnet50 = keras.applications.ResNet50( weights="imagenet", include_top=False, input_tensor=model_input)
+    resnet50 = keras.applications.ResNet50( weights=None, include_top=False, input_tensor=model_input)
     x = resnet50.get_layer("conv4_block6_2_relu").output
     x = DilatedSpatialPyramidPooling(x)
 
@@ -56,22 +56,6 @@ def deeplab_input(config):
     swir_inputs = layers.Input(shape=(patch_size, patch_size, 1))
     if "RGB" in bands and "NIR" in bands and "SWIR" in bands:
         return [rgb_inputs, nir_inputs, swir_inputs], rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs, config)
-    return [rgb_inputs, nir_inputs, swir_inputs], layers.concatenate([rgb_inputs, nir_inputs, swir_inputs])
-
-
-def multispectral_input(config):
-    # RGB Input
-    patch_size = get_patch_size(config)
-    rgb_inputs = keras.layers.Input(shape=(patch_size, patch_size, 3))
-    # grayscale = keras.layers.Lambda(lambda x: tf.image.rgb_to_grayscale(x))(rgb_inputs)
-
-    # NIR Input
-    nir_inputs = keras.layers.Input(shape=(patch_size, patch_size, 1))
-
-    # SWIR Input
-    swir_inputs = keras.layers.Input(shape=(patch_size, patch_size, 1))
-
-    # Concat Inputs
-    concat = keras.layers.concatenate([rgb_inputs, nir_inputs, swir_inputs], axis=3)
-    output = keras.layers.Conv2D(3, (1, 1), strides=(1, 1), activation="relu", kernel_initializer='he_uniform', padding="same")(concat)
-    return [rgb_inputs, nir_inputs, swir_inputs], output
+    elif "NIR" in bands:
+        return [nir_inputs], nir_inputs
+    return [rgb_inputs], rgb_inputs

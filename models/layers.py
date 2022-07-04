@@ -70,11 +70,11 @@ def fusion_head_paper(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) 
     :param swir_inputs: The input layer for SWIR features
     :returns: The fusion head as a Keras layer
     """
-    rgb_conv = Conv2D(64, (7, 7), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(rgb_inputs)
+    rgb_conv = Conv2D(64, (7, 7), strides=(2, 2), activation=swish, kernel_initializer='he_uniform', padding="same")(rgb_inputs)
 
-    nir_conv = Conv2D(32, (7, 7), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(nir_inputs)
+    nir_conv = Conv2D(32, (7, 7), strides=(2, 2), activation=swish, kernel_initializer='he_uniform', padding="same")(nir_inputs)
 
-    swir_conv = Conv2D(32, (7, 7), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(swir_inputs)
+    swir_conv = Conv2D(32, (1, 1), strides=(1, 1), activation=swish, kernel_initializer='he_uniform', padding="same")(swir_inputs)
 
     concat = concatenate([rgb_conv, nir_conv, swir_conv], axis=3)
 

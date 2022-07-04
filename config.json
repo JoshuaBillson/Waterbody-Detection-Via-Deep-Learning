@@ -1,21 +1,24 @@
 {
   "timestamp": 1,
   "patch_size": 512,
-  "experiment_tag": "waterbody_transfer_grayscale",
+  "experiment_tag": "baseline",
   "create_logs": true,
   "train": true,
   "test": true,
   "experiments": 1,
+  "use_mixed_precision": true,
   "hyperparameters": {
     "model": "deeplab",
-    "bands": ["RGB", "NIR", "SWIR"],
+    "bands": ["RGB"],
     "backbone": null,
     "learning_rate": 0.00005,
-    "fusion_head": "grayscale",
+    "fusion_head": "naive",
     "loss": "jaccard_bce",
     "batch_size": 4,
     "epochs": 50,
-    "apply_transfer": true,
-    "random_subsample": true
+    "apply_transfer": false,
+    "random_subsample": false, 
+    "water_threshold": 0
   }
 }
+ 

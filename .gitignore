@@ -11,4 +11,6 @@ validation/
 test/
 old_data/
 experiments
+remove_experiment.py
+resample.py
 

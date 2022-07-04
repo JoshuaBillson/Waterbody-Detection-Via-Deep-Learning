@@ -10,7 +10,7 @@ from backend.pipeline import load_dataset
 from generate_patches import generate_patches
 from models import get_model
 from models.utils import evaluate_model
-from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate, get_timestamp_directory, get_num_experiments
+from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate, get_timestamp_directory, get_num_experiments, get_mixed_precision
 from models.losses import JaccardBCELoss, DiceBCELoss, JaccardLoss, focal_tversky, WeightedBCE, TanimotoLoss, TanimotoBCELoss, TanimotoLossWithComplement, TanimotoWithComplementBCELoss, ScheduledTanimoto, tversky
 from backend.callbacks import get_callbacks, create_callback_dirs
 
@@ -42,6 +42,10 @@ def main():
     with open('config.json') as f:
         config = json.loads(f.read())
 
+    # Use Mixed Precision
+    if get_mixed_precision(config):
+        mixed_precision.set_global_policy('mixed_float16')
+
     # Generate Patches
     if "tiles" not in os.listdir(f"data/{get_timestamp_directory(config)}"):
         generate_patches(config=config)
@@ -60,7 +64,7 @@ def main():
         # Create Model
         model = get_model(config)
         model.summary()
-        model.compile(loss=get_loss_function(config), optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MIOU(), Precision(), Recall()])
+        model.compile(loss=get_loss_function(config), optimizer=Adam(learning_rate=get_learning_rate(config)), metrics=[MIOU(), Recall(), Precision()])
 
         # Get Callbacks
         callbacks = get_callbacks(config, val_data, model)
@@ -78,13 +82,15 @@ def main():
 
         # Evaluate Model On Test Set
         if config["test"]:
+            #results.append(evaluate_model(model, test_data))
             results.append(test_data.predict_batch(model, "test"))
         
         # Save Experiment Configuration For Future Reference
         if "experiments" not in os.listdir():
             os.mkdir("experiments")
-        with open(f"experiments/{model.name}.json", 'w') as config_file:
-            config_file.write(json.dumps(config, indent=2))
+        if get_model_type(config) not in os.listdir("checkpoints"):
+            with open(f"experiments/{model.name}.json", 'w') as config_file:
+                config_file.write(json.dumps(config, indent=2))
         
     # Evaluate Performance Of All Models
     if config["test"]:
@@ -100,9 +106,6 @@ if __name__ == '__main__':
     args = sys.argv
     GPUS = args[1:] if len(args) > 1 else ["0"] 
     os.environ["CUDA_VISIBLE_DEVICES"]=f"{','.join(GPUS)}"
-
-    # Use Mixed Precision
-    mixed_precision.set_global_policy('mixed_float16')
 
     # Run Script
     main()

@@ -5,33 +5,34 @@ import shutil
 import json
 import random
 from typing import Dict, List, Sequence, Tuple
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from backend.data_loader import DataLoader
 from backend.pipeline import ImgSequence, ImgSequence
-from backend.config import get_timestamp_directory
+from backend.config import get_timestamp_directory, get_timestamp
 from backend.utils import adjust_rgb
+
+DIRECTORY = "transplanted_tiles_20"
 
 class GenerateTransferImgSequence(ImgSequence):
     """A class to demonstrate the waterbody transfer method."""
 
-    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None, is_train: bool = True, random_subsample: bool = True):
+    def __init__(self, timestamp: int, tiles: List[int], batch_size: int = 32, bands: Sequence[str] = None):
         # Initialize Member Variables
-        self.data_loader = DataLoader(timestamp, overlapping_patches=is_train, random_subsample=random_subsample)
+        self.data_loader = DataLoader(timestamp)
         self.batch_size = batch_size
         self.bands = ["RGB"] if bands is None else bands
         self.indices = tiles 
-        self.is_train = is_train
         self.transfer_tile_index = 401
 
         # If We Want To Apply Waterbody Transferrence, Locate All Patches With At Least 10% Water
         self.transfer_patches = []
-        if self.is_train:
-            for tile_index in self.indices:
-                mask = self.data_loader.get_mask(tile_index)
-                if 3.5 < self._water_content(mask):
-                    print(tile_index, mask.shape, self._water_content(mask))
-                    self.transfer_patches.append(tile_index)
+        for tile_index in self.indices:
+            mask = self.data_loader.get_mask(tile_index)
+            if 0.5 < self._water_content(mask) < 2.5:
+                print(tile_index, mask.shape, self._water_content(mask))
+                self.transfer_patches.append(tile_index)
 
     def transfer_waterbody(self, features: Dict[str, np.ndarray], timestamp_directory) -> None:
         """
@@ -39,75 +40,76 @@ class GenerateTransferImgSequence(ImgSequence):
         :param features: A dictionary of input features (RGB, NIR, SWIR) and the mask to which we want to transfer a waterbody
         :param threshold: The water content threshold below which we apply waterbody transfer
         """
+        # Save Destination Featuers For Plotting
+        dst_mask = copy.deepcopy(features["mask"])
+        dst_features = copy.deepcopy(features)
+        src_mask = None
+        src_features = None
+
         # Acquire Probability Of Applying Transfer
-        if (self._water_content(features["mask"]) < 2.0):
+        while (self._water_content(features["mask"]) < 20.0):
 
-            # Transfer All Source Patches
-            for _ in range(3):
+            # Get Source Mask
+            assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
+            source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
+            source_features = self._get_features(source_index, subsample=False)
+            source_mask = source_features["mask"]
 
-                # Get Source Mask
-                assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
-                source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
-                source_features = self._get_features(source_index, subsample=False)
-                source_mask = source_features["mask"]
+            # Variables To Plot
+            src_mask = copy.deepcopy(source_features["mask"])
+            src_features = copy.deepcopy(source_features)
 
-                # Variables To Plot
-                src_mask = copy.deepcopy(source_features["mask"])
-                src_features = copy.deepcopy(source_features)
-                dst_mask = copy.deepcopy(features["mask"])
-                dst_features = copy.deepcopy(features)
+            # Apply Waterbody Transfer To Each Feature Map
+            for band in self.bands:
 
-                # Apply Waterbody Transfer To Each Feature Map
-                for band in self.bands:
+                # Compute Different In Brightness Between Source And Destination
+                src_brightness = np.mean(source_features[band])
+                dst_brightness = np.mean(dst_features[band])
+                brightness_ratio = dst_brightness / src_brightness
 
-                    # Compute Different In Brightness Between Source And Destination
-                    src_brightness = np.mean(source_features[band])
-                    dst_brightness = np.mean(dst_features[band])
-                    brightness_ratio = dst_brightness / src_brightness
+                # Get Source Feature
+                source_feature = (source_features[band] * brightness_ratio).astype("uint16")
 
-                    # Get Source Feature
-                    source_feature = (source_features[band] * brightness_ratio).astype("uint16")
+                # Extract Waterbody From Source Feature 
+                waterbody = source_mask * source_feature
 
-                    # Extract Waterbody From Source Feature 
-                    waterbody = source_mask * source_feature
+                # Remove Waterbody Region From Destination Feature
+                features[band] *= np.where(source_mask == 1, 0, 1).astype("uint16")
 
-                    # Remove Waterbody Region From Destination Feature
-                    features[band] *= np.where(source_mask == 1, 0, 1).astype("uint16")
+                # Transfer Waterbody To Destination Feature Map
+                features[band] += waterbody
+                
+            # Create Augmented Mask
+            features["mask"] = np.where((features["mask"] + source_mask) >= 1, 1, 0).astype("uint16")
 
-                    # Transfer Waterbody To Destination Feature Map
-                    features[band] += waterbody
+        if src_mask is not None and src_features is not None:
 
-                    # Save Augmented Patch To Disk
-                    filename = f"data/{timestamp_directory}/transplanted_tiles/{band.lower()}/{self.transfer_tile_index}.tif"
-                    DataLoader.save_image(features[band], filename)
+            # Downsample SWIR
+            features["SWIR"] = np.resize(cv2.resize(features["SWIR"], (512, 512), interpolation = cv2.INTER_AREA), (512, 512, 1))
+
+            # Save Augmented Tiles To Disk
+            for band in features.keys():
+                filename = f"data/{timestamp_directory}/{DIRECTORY}/{band.lower()}/{band.lower()}.{self.transfer_tile_index}.tif"
+                DataLoader.save_image(features[band], filename)
                     
-                # Save Augmented Mask To Disk
-                features["mask"] = np.where((features["mask"] + source_mask) >= 1, 1, 0).astype("uint16")
-                filename = f"data/{timestamp_directory}/transplanted_tiles/mask/{self.transfer_tile_index}.tif"
-                DataLoader.save_image(features["mask"], filename)
-
-                # Plot Transfers
-                self.plot_transfer(src_mask, src_features, dst_mask, dst_features, features["mask"], features)
-
-                # Restore Original Destination Features And Mask
-                features = dst_features
-
+            # Plot Transfers
+            self.plot_transfer(src_mask, src_features, dst_mask, dst_features, features["mask"], features)
 
     def run_waterbody_transfer(self, config):
         """Demonstrate the waterbody tranfer method"""
         # Create Directory Plotting Transferred Images
-        if "transfers" in os.listdir("images"):
-            shutil.rmtree("images/transfers")
-        os.mkdir("images/transfers")
+        if f"{DIRECTORY}" in os.listdir("images"):
+            shutil.rmtree(f"images/{DIRECTORY}")
+        os.mkdir(f"images/{DIRECTORY}")
 
         # Create Directory For Saving Transplanted Images
-        if "transplanted_tiles" in os.listdir(f"data/{get_timestamp_directory(config)}"):
-            shutil.rmtree(f"data/{get_timestamp_directory(config)}/transplanted_tiles")
-        os.mkdir(f"data/{get_timestamp_directory(config)}/transplanted_tiles")
+        if f"{DIRECTORY}" in os.listdir(f"data/{get_timestamp_directory(config)}"):
+            shutil.rmtree(f"data/{get_timestamp_directory(config)}/{DIRECTORY}")
+        os.mkdir(f"data/{get_timestamp_directory(config)}/{DIRECTORY}")
 
         # Create Directory For Each Band Of Transplanted Images
         for band in ("mask", "nir", "rgb", "swir"):
-            os.mkdir(f"data/{get_timestamp_directory(config)}/transplanted_tiles/{band}")
+            os.mkdir(f"data/{get_timestamp_directory(config)}/{DIRECTORY}/{band}")
 
         for patch in self.indices:
             features = self._get_features(patch, subsample=False)
@@ -154,7 +156,7 @@ class GenerateTransferImgSequence(ImgSequence):
             axs[row][5].axis("off")
 
         # Save Figure
-        plt.savefig(f"images/transfers/transfer_{self.transfer_tile_index}.png", dpi=500, bbox_inches='tight')
+        plt.savefig(f"images/{DIRECTORY}/transfer_{self.transfer_tile_index}.png", dpi=500, bbox_inches='tight')
         self.transfer_tile_index += 1
         plt.close()
 
@@ -169,20 +171,20 @@ def main():
         batches = json.loads(f.read())
 
     # Create Data Loader
-    # data = GenerateTransferImgSequence(timestamp=get_timestamp(config), batch_size=1, bands=["RGB", "NIR", "SWIR"], tiles=batches["train"], is_train=True)
+    data = GenerateTransferImgSequence(timestamp=get_timestamp(config), batch_size=1, bands=["RGB", "NIR", "SWIR"], tiles=batches["train"])
 
     # Run Transfer
-    # data.run_waterbody_transfer(config)
+    data.run_waterbody_transfer(config)
 
     # Add Transplanted Tiles To Train Data
-    transplanted_tiles = list(filter(lambda x: ".tif" in x, os.listdir(f"data/{get_timestamp_directory(config)}/transplanted_tiles/mask")))
+    transplanted_tiles = list(filter(lambda x: ".tif" in x, os.listdir(f"data/{get_timestamp_directory(config)}/{DIRECTORY}/mask")))
     transplanted_tile_indices = list(map(lambda x: int(x.split(".")[1]), transplanted_tiles))
     batches["train"] += transplanted_tile_indices
     random.shuffle(batches["train"])
 
     # Save Batches To Disk
-    if "transplanted.json" not in os.listdir("batches"):
-        with open("batches/transplanted.json", 'w') as batch_file:
+    if f"{DIRECTORY}.json" not in os.listdir("batches"):
+        with open(f"batches/{DIRECTORY}.json", 'w') as batch_file:
             batch_file.write(json.dumps(batches, indent=2))
 
 

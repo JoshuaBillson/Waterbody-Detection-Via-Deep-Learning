@@ -11,7 +11,7 @@ def MIOU():
     m = tf.keras.metrics.MeanIoU(num_classes=2)
     def MIoU(y_true, y_pred):
         m.reset_states()
-        y_true, y_pred = flatten(y_true), flatten(tf.where(y_pred >= 0.5, 1.1, 0.0))
+        y_true, y_pred = y_true, tf.where(y_pred >= 0.5, 1.1, 0.0)
         _ = m.update_state(y_true, y_pred)
         return m.result()
     return MIoU

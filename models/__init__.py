@@ -16,6 +16,8 @@ from models.fpn import fpn
 from models.link_net import link_net
 from models.psp_net import psp_net
 from models.deeplab import DeeplabV3Plus
+from models.mc_wbdn import mc_wbdn
+from models.aspp_unet import MyUnet
 from backend.config import get_model_type
 
 
@@ -41,6 +43,8 @@ def get_model(config: Dict[str, Any]) -> Model:
               "psp_net": psp_net,
               "link_net": link_net,
               "deeplab": DeeplabV3Plus, 
+              "mc_wbdn": mc_wbdn, 
+              "aspp_unet": MyUnet, 
               }
     if model in os.listdir("checkpoints"):
         print(model)

@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 from backend.data_loader import DataLoader
@@ -13,6 +14,11 @@ def analyze_dataset(loader: DataLoader) -> None:
     :param loader: The DataLoader that will be used to read the patches from disk
     :returns: Nothing
     """
+    # Create Directory Plotting Images
+    if "data_analysis" in os.listdir("images"):
+        shutil.rmtree("images/data_analysis")
+    os.mkdir("images/data_analysis")
+
     # Analyze Initial Mask
     mask = np.clip(loader.read_image("data/label.tif"), a_min=0, a_max=1)
     total_pixels = mask.size
@@ -20,46 +26,47 @@ def analyze_dataset(loader: DataLoader) -> None:
     print("\nMASK\n")
     print(f"Total Pixels: {total_pixels}\nWater Pixels: {water_pixels}\nWater Percentage: {round(water_pixels / total_pixels * 100.0, ndigits=2)}%")
 
-    # Analyze Patches
+    # Analyze Tiles
     water_pixels_hist = []
-    lower_bound, upper_bound = loader.get_bounds()
-    for patch in range(lower_bound, upper_bound+1):
-        mask_patch = loader.get_mask(patch)
-        total_pixels = mask_patch.size
-        water_pixels = np.sum(mask_patch)
+    for tile in range(1, 401):
+        mask_tile = loader.get_mask(tile)
+        total_pixels = mask_tile.size
+        water_pixels = np.sum(mask_tile)
         water_percentage = water_pixels / total_pixels * 100.0
         water_pixels_hist.append(water_percentage)
+        print(tile, water_percentage)
+        
     
-    # Generate Histogram For All Patches
-    stats = plt.hist(water_pixels_hist, bins=np.arange(0.0, 51.0, 2.5))
-    plt.title("All Patches")
+    # Generate Histogram For All Tiles
+    stats = plt.hist(water_pixels_hist, bins=np.arange(0.0, 25.0, 1.0))
+    plt.title("All Tiles")
     plt.xlabel("Water Pixels (%)")
-    plt.ylabel("Patches (Count)")
-    plt.savefig("images/histogram_all.png", bbox_inches='tight')
-    plt.cla()
+    plt.ylabel("Tiles (Count)")
+    plt.savefig("images/data_analysis/histogram_all.png", bbox_inches='tight')
+    plt.close()
     
     # Summarize Histogram Statistics
     print("\nSUMMARIZE PATCH HISTOGRAM\n")
     for count, b in zip(stats[0], stats[1]):
-        print(f"[{b}, {b+2.5}): {int(count)}")
-    
+        print(f"[{b}, {b+1.0}): {int(count)}")
 
-    # Generate Histogram For Patches With At Least 5% Water
-    stats = plt.hist(list(filter(lambda x: x >= 5.0, water_pixels_hist)), bins=np.arange(5.0, 51.0, 2.5))
-    plt.title("Patches With At Least 5% Water")
+    # Generate Histogram For Tiles With At Least 5% Water
+    stats = plt.hist(list(filter(lambda x: x >= 5.0, water_pixels_hist)), bins=np.arange(0.0, 25.0, 1.0))
+    plt.title("Tiles With At Least 5% Water")
     plt.xlabel("Water Pixels (%)")
-    plt.ylabel("Patches (Count)")
-    plt.savefig("images/histogram_over5.png", bbox_inches='tight')
-    plt.cla()
+    plt.ylabel("Tiles (Count)")
+    plt.savefig("images/data_analysis/histogram_over5.png", bbox_inches='tight')
+    plt.close()
 
     # Additional Statistics
     print("\nADDITIONAL STATISTICS\n")
-    print(f"Patches With No Water: {len(list(filter(lambda x: x == 0.0, water_pixels_hist)))}")
-    print(f"Patches With Water: {len(list(filter(lambda x: x > 0.0, water_pixels_hist)))}")
-    print(f"Patches With Less Than 5% Water: {len(list(filter(lambda x: x < 5.0, water_pixels_hist)))}")
-    print(f"Patches With Over 5% Water: {len(list(filter(lambda x: x >= 5.0, water_pixels_hist)))}")
-    print(f"Patches With Less Than 10% Water: {len(list(filter(lambda x: x < 10.0, water_pixels_hist)))}")
-    print(f"Patches With Over 10% Water: {len(list(filter(lambda x: x >= 10.0, water_pixels_hist)))}")
+    print(f"Tiles With No Water: {len(list(filter(lambda x: x == 0.0, water_pixels_hist)))}")
+    print(f"Tiles With Water: {len(list(filter(lambda x: x > 0.0, water_pixels_hist)))}")
+    print(f"Tiles With Less Than 5% Water: {len(list(filter(lambda x: x < 5.0, water_pixels_hist)))}")
+    print(f"Tiles With Over 5% Water: {len(list(filter(lambda x: x >= 5.0, water_pixels_hist)))}")
+    print(f"Tiles With Less Than 10% Water: {len(list(filter(lambda x: x < 10.0, water_pixels_hist)))}")
+    print(f"Tiles With Over 10% Water: {len(list(filter(lambda x: x >= 10.0, water_pixels_hist)))}")
+
 
 def main():
     # Get Project Configuration

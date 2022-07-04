@@ -16,7 +16,7 @@ def psp_net(config: Dict[str, Any]) -> Model:
 
     # Construct Base Model
     backbone = backbone if backbone is not None else "efficientnetb0"
-    model = Linknet(backbone_name=backbone, input_shape=(config["patch_size"], config['patch_size'], 1), classes=1, activation='sigmoid', encoder_weights=None, weights=None)
+    model = Linknet(backbone_name=None, input_shape=(config["patch_size"], config['patch_size'], 1), classes=1, activation='sigmoid', encoder_weights=None, weights=None)
     model.summary()
 
     # Replace Input And Output Layers

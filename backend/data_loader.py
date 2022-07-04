@@ -7,11 +7,12 @@ import numpy as np
 
 class DataLoader:
     """A class to save and load images from disk"""
-    def __init__(self, timestamp: int = 1, overlapping_patches: bool = False, random_subsample: bool = False):
+    def __init__(self, timestamp: int = 1, overlapping_patches: bool = False, random_subsample: bool = False, upscale_swir: bool = True):
         self.timestamp = timestamp
         self.folders = {1: "2018.04", 2: "2018.12", 3: "2019.02"}
         self.overlapping_patches = overlapping_patches
         self.random_subsample = random_subsample
+        self.upscale_swir = upscale_swir
 
     def get_rgb_features(self, tile_number: int, coords: Tuple[int, int] = (0, 0), preprocess_img: bool = True, tile_dir: str = "tiles") -> np.ndarray:
         """
@@ -38,8 +39,10 @@ class DataLoader:
         :return: The SWIR features of the matching patch,
         """
         tile = self.read_image(f"data/{self.folders.get(self.timestamp, 1)}/{tile_dir}/swir/swir.{tile_number}.tif", preprocess_img=preprocess_img)
-        tile = np.resize(cv2.resize(tile, (1024, 1024), interpolation = cv2.INTER_AREA), (1024, 1024, 1))
-        return self.subsample_tile(tile, coords=coords) if coords is not None else tile
+        tile = np.resize(cv2.resize(tile, (1024, 1024), interpolation = cv2.INTER_AREA), (1024, 1024, 1)) if self.upscale_swir else tile
+        if coords is not None:
+            return self.subsample_tile(tile, coords=coords) if self.upscale_swir else self.subsample_swir_tile(tile, coords=coords)
+        return tile
 
     def get_mask(self, tile_number: int, coords: Tuple[int, int] = None, preprocess_img: bool = True, tile_dir: str = "tiles") -> np.ndarray:
         """
@@ -80,6 +83,14 @@ class DataLoader:
         Take a 512X512 sub-patch from a 1024X12024 tile.
         """
         return tile[coords[1]:coords[1]+512, coords[0]:coords[0]+512, :]
+
+    def subsample_swir_tile(self, tile: np.ndarray, coords: Tuple[int, int] = (0, 0)) -> np.ndarray:
+        """
+        Take a 512X512 sub-patch from a 1024X12024 tile.
+        """
+        y_coord = coords[1] // 2
+        x_coord = coords[0] // 2
+        return tile[y_coord:y_coord+256, x_coord:x_coord+256, :]
     
     def get_patch_coords(self, patch_index: int = 0) -> Tuple[int, int]:
         """Get the coordinates for a patch inside a tile from a given patch_index. If random_subsample is True, the coords will be selected randomly."""
