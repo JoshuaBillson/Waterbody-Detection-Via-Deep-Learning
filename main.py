@@ -4,6 +4,7 @@ import json
 from typing import Dict, Any
 from tensorflow.keras.metrics import Recall, Precision
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import binary_crossentropy
 from tensorflow.keras import mixed_precision
 from backend.metrics import MIOU 
 from backend.pipeline import load_dataset
@@ -11,7 +12,7 @@ from generate_patches import generate_patches
 from models import get_model
 from models.utils import evaluate_model
 from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate, get_timestamp_directory, get_num_experiments, get_mixed_precision
-from models.losses import JaccardBCELoss, DiceBCELoss, JaccardLoss, focal_tversky, WeightedBCE, TanimotoLoss, TanimotoBCELoss, TanimotoLossWithComplement, TanimotoWithComplementBCELoss, ScheduledTanimoto, tversky
+from models.losses import JaccardBCELoss, DiceBCELoss, JaccardLoss, WeightedBCE, Focal_Tversky, Tversky, DiceLoss, FocalLoss, JaccardWeightedBCELoss
 from backend.callbacks import get_callbacks, create_callback_dirs
 
 
@@ -22,17 +23,16 @@ def get_loss_function(config: Dict[str, Any]):
     :returns: The loss function to use during model optimization
     """
     losses = {
+        "bce": binary_crossentropy,
+        "weighted_bce": WeightedBCE(0.02, 0.98),
+        "dice": DiceLoss,
         "dice_bce": DiceBCELoss,
         "jaccard": JaccardLoss,
         "jaccard_bce": JaccardBCELoss,
-        "tanimoto": TanimotoLoss,
-        "tanimoto_with_complement": TanimotoLossWithComplement,
-        "modified_tanimoto_with_bce": TanimotoWithComplementBCELoss,
-        "tanimoto_bce": TanimotoBCELoss,
-        "scheduled_tanimoto": ScheduledTanimoto(config),
-        "weighted_bce": WeightedBCE(0.1, 0.9),
-        "focal_tversky": focal_tversky,
-        "tversky": tversky,
+        "jaccard_weighted_bce": JaccardWeightedBCELoss(0.02, 0.98, alpha=0.9),
+        "focal": FocalLoss(),
+        "focal_tversky": Focal_Tversky(),
+        "tversky": Tversky(),
         }
     return losses[config["hyperparameters"]["loss"]]
 

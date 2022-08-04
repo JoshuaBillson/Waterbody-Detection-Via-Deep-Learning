@@ -208,13 +208,10 @@ def load_dataset(config) -> Tuple[ImgSequence, ImgSequence, ImgSequence]:
 
     # Read Batches From JSON File
     water_threshold = get_water_threshold(config)
-    batch_filename = f"batches/transplanted_tiles_{water_threshold}.json" if get_waterbody_transfer(config) else "batches/tiles.json"
+    batch_filename = f"batches/transplanted_tiles_{water_threshold}_timestamp_{get_timestamp(config)}.json" if get_waterbody_transfer(config) else "batches/tiles.json"
     with open(batch_filename) as f:
         batch_file = json.loads(f.read())
     
-    # Choose Type Of Data Pipeline Based On Project Config
-    Constructor = WaterbodyTransferImgSequence if get_waterbody_transfer(config) else ImgSequence
-
     # Create Train, Validation, And Test Data
     upscale_swir = get_fusion_head(config) != "paper"
     if get_waterbody_transfer(config):

@@ -1,9 +1,10 @@
 import os
 from typing import Dict, Any
-from tensorflow.keras.layers import Conv2D, Input, concatenate
+import tensorflow as tf
+from tensorflow.keras.layers import Conv2D, Input, concatenate, Lambda
 from tensorflow.keras.models import Model
-from models.layers import rgb_nir_swir_input_layer
-from backend.config import get_model_type, get_bands, get_patch_size, get_experiment_tag
+from models.layers import rgb_nir_swir_input_layer, fusion_head_prism
+from backend.config import get_model_type, get_bands, get_patch_size, get_experiment_tag, get_fusion_head, get_backbone
 
 
 def assemble_model(base_model: Model, config: Dict[str, Any]) -> Model:
@@ -51,7 +52,8 @@ def nir_model(base_model: Model, config: Dict[str, Any]) -> Model:
 
     # Replace Model Input
     nir_input = Input(shape=(get_patch_size(config), get_patch_size(config), 1))
-    outputs = model(nir_input)
+    model_input = Lambda(tf.image.grayscale_to_rgb)(nir_input) if get_backbone(config) is not None else nir_input
+    outputs = model(model_input)
     return Model(inputs=nir_input, outputs=outputs, name=get_model_name(config))
 
 
@@ -104,10 +106,12 @@ def rgb_nir_swir_model(base_model: Model, config: Dict[str, Any]) -> Model:
     patch_size = get_patch_size(config)
     rgb_inputs = Input(shape=(patch_size, patch_size, 3))
     nir_inputs = Input(shape=(patch_size, patch_size, 1))
-    swir_inputs = Input(shape=(patch_size, patch_size, 1))
+    swir_inputs = Input(shape=(patch_size // 2 if get_fusion_head(config) == "paper" else patch_size, patch_size // 2 if get_fusion_head(config) == "paper" else patch_size, 1))
     fusion_head = rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs, config)
     outputs = model(fusion_head)
-    return Model(inputs=[rgb_inputs, nir_inputs, swir_inputs], outputs=outputs, name=get_model_name(config))
+    model = Model(inputs=[rgb_inputs, nir_inputs, swir_inputs], outputs=outputs, name=get_model_name(config))
+    model.summary()
+    return model
 
 
 def replace_output(base_model: Model, config: Dict[str, Any]) -> Model:

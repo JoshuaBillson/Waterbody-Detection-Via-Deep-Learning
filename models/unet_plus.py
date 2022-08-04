@@ -15,7 +15,7 @@ def unet_plus(config):
     # Construct Base Model
     model = unet_plus_2d((config['patch_size'], config['patch_size'], input_channels), [64, 128, 256, 512, 1024],
                          n_labels=1, stack_num_down=2, stack_num_up=1, activation='ReLU', output_activation='Sigmoid',
-                         batch_norm=True, pool='max', unpool='nearest', name='r2unet', backbone=backbone)
+                         batch_norm=True, pool='max', unpool='nearest', name='unet_plus', backbone=backbone, freeze_backbone=False)
     model.summary()
 
     # Replace Input And Output Layers

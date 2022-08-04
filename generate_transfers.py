@@ -1,19 +1,40 @@
 import os
-import sys
 import copy
 import shutil
 import json
 import random
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Sequence
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from backend.data_loader import DataLoader
-from backend.pipeline import ImgSequence, ImgSequence
-from backend.config import get_timestamp_directory, get_timestamp
+from backend.pipeline import ImgSequence
 from backend.utils import adjust_rgb
 
-DIRECTORY = "transplanted_tiles_20"
+THRESHOLD = 15.0
+DIRECTORY = f"transplanted_tiles_{int(THRESHOLD)}"
+TIMESTAMP = 1
+
+def get_timestamp_directory(timestamp):
+    return {1: "2018.04", 2: "2018.12", 3: "2019.02"}[timestamp]
+
+
+def create_directory_at_root(path: str):
+    # Create Directories Up Until The Last Directory In The Path
+    current_path = ""
+    for directory in path.split("/")[:-1]:
+        directory_contents = os.listdir(current_path) if current_path != "" else os.listdir()
+        directory_exists = directory in directory_contents
+        if not directory_exists:
+            os.mkdir(current_path + directory)
+        current_path += f"{directory}/"
+
+    # If The Last Directory Exists, Delete It Before Creation
+    last_dir = path.split("/")[-1]
+    if last_dir in os.listdir(current_path):
+        shutil.rmtree(current_path + last_dir)
+    os.mkdir(current_path + last_dir)
+
 
 class GenerateTransferImgSequence(ImgSequence):
     """A class to demonstrate the waterbody transfer method."""
@@ -47,40 +68,19 @@ class GenerateTransferImgSequence(ImgSequence):
         src_features = None
 
         # Acquire Probability Of Applying Transfer
-        while (self._water_content(features["mask"]) < 20.0):
+        while (self._water_content(features["mask"]) < THRESHOLD):
 
-            # Get Source Mask
+            # Get Source Features
             assert len(self.transfer_patches) > 0, "Error: Cannot Augment Dataset Without Transfer Patches!"
             source_index = self.transfer_patches[random.randint(0, len(self.transfer_patches) - 1)]
             source_features = self._get_features(source_index, subsample=False)
-            source_mask = source_features["mask"]
 
             # Variables To Plot
             src_mask = copy.deepcopy(source_features["mask"])
             src_features = copy.deepcopy(source_features)
 
             # Apply Waterbody Transfer To Each Feature Map
-            for band in self.bands:
-
-                # Compute Different In Brightness Between Source And Destination
-                src_brightness = np.mean(source_features[band])
-                dst_brightness = np.mean(dst_features[band])
-                brightness_ratio = dst_brightness / src_brightness
-
-                # Get Source Feature
-                source_feature = (source_features[band] * brightness_ratio).astype("uint16")
-
-                # Extract Waterbody From Source Feature 
-                waterbody = source_mask * source_feature
-
-                # Remove Waterbody Region From Destination Feature
-                features[band] *= np.where(source_mask == 1, 0, 1).astype("uint16")
-
-                # Transfer Waterbody To Destination Feature Map
-                features[band] += waterbody
-                
-            # Create Augmented Mask
-            features["mask"] = np.where((features["mask"] + source_mask) >= 1, 1, 0).astype("uint16")
+            self.pct(features, source_features)
 
         if src_mask is not None and src_features is not None:
 
@@ -98,22 +98,18 @@ class GenerateTransferImgSequence(ImgSequence):
     def run_waterbody_transfer(self, config):
         """Demonstrate the waterbody tranfer method"""
         # Create Directory Plotting Transferred Images
-        if f"{DIRECTORY}" in os.listdir("images"):
-            shutil.rmtree(f"images/{DIRECTORY}")
-        os.mkdir(f"images/{DIRECTORY}")
+        create_directory_at_root(f"images/transplanted_tiles/timestamp_{TIMESTAMP}/{DIRECTORY}")
 
         # Create Directory For Saving Transplanted Images
-        if f"{DIRECTORY}" in os.listdir(f"data/{get_timestamp_directory(config)}"):
-            shutil.rmtree(f"data/{get_timestamp_directory(config)}/{DIRECTORY}")
-        os.mkdir(f"data/{get_timestamp_directory(config)}/{DIRECTORY}")
+        create_directory_at_root(f"data/{get_timestamp_directory(TIMESTAMP)}/{DIRECTORY}")
 
         # Create Directory For Each Band Of Transplanted Images
         for band in ("mask", "nir", "rgb", "swir"):
-            os.mkdir(f"data/{get_timestamp_directory(config)}/{DIRECTORY}/{band}")
+            os.mkdir(f"data/{get_timestamp_directory(TIMESTAMP)}/{DIRECTORY}/{band}")
 
         for patch in self.indices:
             features = self._get_features(patch, subsample=False)
-            self.transfer_waterbody(features, get_timestamp_directory(config))
+            self.transfer_waterbody(features, get_timestamp_directory(TIMESTAMP))
 
     def plot_transfer(self, src_mask, src_features, dst_mask, dst_features, aug_mask, aug_features) -> None:
         """
@@ -122,7 +118,7 @@ class GenerateTransferImgSequence(ImgSequence):
         :param index: The index of the destination patch; used for plotting the resulting transfer
         :param threshold: The water content threshold below which we apply waterbody transfer
         """
-        _, axs = plt.subplots(len(self.bands), 6, figsize = (6, len(self.bands)))
+        _, axs = plt.subplots(len(self.bands), 6, figsize=(6, len(self.bands)))
         for row, band in enumerate(self.bands):
             print(row, band)
 
@@ -156,9 +152,34 @@ class GenerateTransferImgSequence(ImgSequence):
             axs[row][5].axis("off")
 
         # Save Figure
-        plt.savefig(f"images/{DIRECTORY}/transfer_{self.transfer_tile_index}.png", dpi=500, bbox_inches='tight')
+        plt.savefig(f"images/transplanted_tiles/timestamp_{TIMESTAMP}/{DIRECTORY}/transfer_{self.transfer_tile_index}.png", dpi=500, bbox_inches='tight')
         self.transfer_tile_index += 1
         plt.close()
+    
+    def pct(self, features: Dict[str, np.ndarray], source_features: Dict[str, np.ndarray]):
+        # Apply Waterbody Transfer To Each Feature Map
+        source_mask = source_features["mask"]
+        for band in self.bands:
+
+            # Compute Different In Brightness Between Source And Destination
+            src_brightness = np.mean(source_features[band])
+            dst_brightness = np.mean(features[band])
+            brightness_ratio = dst_brightness / src_brightness
+
+            # Get Source Feature
+            source_feature = (source_features[band] * brightness_ratio).astype("uint16")
+
+            # Extract Waterbody From Source Feature 
+            waterbody = source_mask * source_feature
+
+            # Remove Waterbody Region From Destination Feature
+            features[band] *= np.where(source_mask == 1, 0, 1).astype("uint16")
+
+            # Transfer Waterbody To Destination Feature Map
+            features[band] += waterbody
+            
+        # Create Augmented Mask
+        features["mask"] = np.where((features["mask"] + source_mask) >= 1, 1, 0).astype("uint16")
 
 
 def main():
@@ -171,29 +192,22 @@ def main():
         batches = json.loads(f.read())
 
     # Create Data Loader
-    data = GenerateTransferImgSequence(timestamp=get_timestamp(config), batch_size=1, bands=["RGB", "NIR", "SWIR"], tiles=batches["train"])
+    data = GenerateTransferImgSequence(timestamp=TIMESTAMP, batch_size=1, bands=["RGB", "NIR", "SWIR"], tiles=batches["train"])
 
     # Run Transfer
     data.run_waterbody_transfer(config)
 
     # Add Transplanted Tiles To Train Data
-    transplanted_tiles = list(filter(lambda x: ".tif" in x, os.listdir(f"data/{get_timestamp_directory(config)}/{DIRECTORY}/mask")))
+    transplanted_tiles = list(filter(lambda x: ".tif" in x, os.listdir(f"data/{get_timestamp_directory(TIMESTAMP)}/{DIRECTORY}/mask")))
     transplanted_tile_indices = list(map(lambda x: int(x.split(".")[1]), transplanted_tiles))
     batches["train"] += transplanted_tile_indices
     random.shuffle(batches["train"])
 
     # Save Batches To Disk
-    if f"{DIRECTORY}.json" not in os.listdir("batches"):
-        with open(f"batches/{DIRECTORY}.json", 'w') as batch_file:
-            batch_file.write(json.dumps(batches, indent=2))
+    with open(f"batches/{DIRECTORY}_timestamp_{TIMESTAMP}.json", 'w') as batch_file:
+        batch_file.write(json.dumps(batches, indent=2))
 
 
 if __name__ == "__main__":
-    # Set Visible GPU
-    args = sys.argv
-    GPUS = args[1:] if len(args) > 1 else ["0"] 
-    os.environ["CUDA_VISIBLE_DEVICES"]=f"{','.join(GPUS)}"
-
-    # Run Script
     main()
 

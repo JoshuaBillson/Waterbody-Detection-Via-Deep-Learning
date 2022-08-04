@@ -1,7 +1,7 @@
 import random
 from math import sqrt
-from backend.config import get_patch_size, get_bands
-from models.utils import get_model_name
+from backend.config import get_patch_size, get_bands, get_backbone, get_input_channels, get_fusion_head
+from models.utils import get_model_name, assemble_model
 from models.layers import rgb_nir_swir_input_layer
 from tensorflow.keras.activations import swish
 import tensorflow as tf
@@ -76,22 +76,30 @@ def convolutional_block(x, filter):
     x = layers.Activation('relu')(x)
     return x
 
-def ResNet34(inputs, x_input, classes = 10):
+
+def ResNet34(config, classes=10):
+    # Construct Input
+    patch_size = get_patch_size(config)
+    inputs = layers.Input(shape=(patch_size // 2, patch_size // 2, 64))
+    x = inputs
+
+    # Add the Resnet Blocks
     block_layers = [3, 4, 6, 3]
     filter_size = 64
-    # Step 3 Add the Resnet Blocks
     for block in range(4):
+
+        # For sub-block 1 Residual/Convolutional block not needed
         if block == 0:
-            # For sub-block 1 Residual/Convolutional block not needed
             for j in range(block_layers[block]):
-                x = identity_block(x_input if j==0 else x, filter_size, name=f"out_{block+1}" if j == (block_layers[block] - 1) else None)
+                x = identity_block(x, filter_size, name=f"out_{block+1}" if j == (block_layers[block] - 1) else None)
+
+        # One Residual/Convolutional Block followed by Identity blocks
         else:
-            # One Residual/Convolutional Block followed by Identity blocks
-            # The filter size will go on increasing by a factor of 2
-            filter_size = filter_size*2
+            filter_size *= 2
             x = convolutional_block(x, filter_size)
             for j in range(block_layers[block] - 1):
                 x = identity_block(x, filter_size, name=f"out_{block+1}" if j == (block_layers[block] - 2) else None)
+
     # Step 4 End Dense Network
     x = tf.keras.layers.AveragePooling2D((2,2), padding = 'same')(x)
     x = tf.keras.layers.Flatten()(x)
@@ -101,26 +109,31 @@ def ResNet34(inputs, x_input, classes = 10):
     return model
 
 
-def mc_wbdn(config):
-    # Create Fusion Head
-    inputs, model_input = mc_wbdn_input(config)
-    model_input = layers.Conv2D(64, (1,1), padding='same')(model_input)
+def build_encoder(config):
+    # Construct Encoder
+    encoder = ResNet34(config)
+    encoder.summary()
 
+    # Return Skip Layers
+    out_1 = encoder.get_layer("out_1").output
+    out_2 = encoder.get_layer("out_2").output
+    out_3 = encoder.get_layer("out_3").output
+    out_4 = encoder.get_layer("out_4").output
+    return encoder, out_1, out_2, out_3, out_4
+
+
+def mc_wbdn_base(config):
     # Create Encoder
-    # resnet50 = keras.applications.ResNet50( weights="imagenet", include_top=False, input_tensor=model_input)
-    resnet34 = ResNet34(inputs, model_input)
-    resnet34.summary()
-    x = resnet34.get_layer("out_4").output
-    x = DilatedSpatialPyramidPooling(x)
+    encoder, out_1, out_2, out_3, out_4 = build_encoder(config)
+    
+    # Connect EASPP
+    x = DilatedSpatialPyramidPooling(out_4)
 
     # Concat Feature Maps From Lower Levels With Output Of DSPP Module
     input_a = D2S(input_size=32, output_size=128)(x)
-    input_b = resnet34.get_layer("out_2").output
-    # input_b = convolution_block(input_b, num_filters=48, kernel_size=1)
-    input_c = resnet34.get_layer("out_1").output
-    input_c = S2D(input_size = 256, input_channels=64, output_size=126)(input_c)
-    input_d = resnet34.get_layer("out_3").output
-    input_d = D2S(input_size=64, output_size=128)(input_d)
+    input_b = out_2
+    input_c = S2D(input_size = 256, input_channels=64, output_size=128)(out_1)
+    input_d = D2S(input_size=64, output_size=128)(out_3)
 
     """
     # Create Decoder & Output Layer
@@ -128,15 +141,6 @@ def mc_wbdn(config):
     x = convolution_block(x)
     x = D2S(input_size=128, output_size=512)(x)
     x = convolution_block(x)
-    model_output = layers.Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
-    return keras.Model(inputs=inputs, outputs=model_output, name=get_model_name(config))
-    """
-
-    # Create Decoder & Output Layer
-    x = layers.Concatenate(axis=-1)([input_a, input_b, input_c, input_d])
-    x = convolution_block(x)
-    x = layers.UpSampling2D( size=(4, 4), interpolation="bilinear")(x)
-    x = convolution_block(x, num_filters=128)
     model_output = layers.Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
     return keras.Model(inputs=inputs, outputs=model_output, name=get_model_name(config))
 
@@ -154,11 +158,20 @@ def mc_wbdn(config):
     x = D2S(input_size=128, output_size=512)(x)
     model_output = layers.Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
     return keras.Model(inputs=inputs, outputs=model_output, name=get_model_name(config))
+    """
+
+    # Create Decoder & Output Layer
+    x = layers.Concatenate(axis=-1)([input_a, input_b, input_c, input_d])
+    x = convolution_block(x)
+    x = layers.UpSampling2D( size=(4, 4), interpolation="bilinear")(x)
+    x = convolution_block(x, num_filters=128)
+    model_output = layers.Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
+    return keras.Model(inputs=encoder.inputs, outputs=model_output, name=get_model_name(config))
 
 
-def mc_wbdn_input(config):
-    patch_size = get_patch_size(config)
-    rgb_inputs = layers.Input(shape=(patch_size, patch_size, 3))
-    nir_inputs = layers.Input(shape=(patch_size, patch_size, 1))
-    swir_inputs = layers.Input(shape=(patch_size // 2, patch_size // 2, 1))
-    return [rgb_inputs, nir_inputs, swir_inputs], rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs, config)
+
+def mc_wbdn(config):
+    base_model = mc_wbdn_base(config)
+    base_model.summary()
+    model = assemble_model(base_model, config)
+    return model

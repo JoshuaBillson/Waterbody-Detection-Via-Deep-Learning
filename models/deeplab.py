@@ -1,6 +1,6 @@
-from backend.config import get_patch_size, get_bands
-from models.utils import get_model_name
+from backend.config import get_input_channels, get_patch_size, get_bands, get_backbone
 from models.layers import rgb_nir_swir_input_layer
+from models.utils import get_model_name, assemble_model
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
@@ -28,34 +28,41 @@ def DilatedSpatialPyramidPooling(dspp_input):
     return output
 
 
-def DeeplabV3Plus(config):
+def deeplab_base(config, weights=None):
+    # Construct ResNet Encoder
     image_size = get_patch_size(config)
-    inputs, model_input = deeplab_input(config)
-    resnet50 = keras.applications.ResNet50( weights=None, include_top=False, input_tensor=model_input)
+    inputs = layers.Input(shape=(image_size, image_size, get_input_channels(config)))
+    resnet50 = keras.applications.ResNet50(weights=weights, include_top=False, input_tensor=inputs)
+
+    # Construct ASPP Module
     x = resnet50.get_layer("conv4_block6_2_relu").output
     x = DilatedSpatialPyramidPooling(x)
 
+    # Grab Skip Connections 
     input_a = layers.UpSampling2D( size=(image_size // 4 // x.shape[1], image_size // 4 // x.shape[2]), interpolation="bilinear",)(x)
     input_b = resnet50.get_layer("conv2_block3_2_relu").output
     input_b = convolution_block(input_b, num_filters=48, kernel_size=1)
 
+    # Implement Decoder And Output
     x = layers.Concatenate(axis=-1)([input_a, input_b])
     x = convolution_block(x)
     x = convolution_block(x)
     x = layers.UpSampling2D( size=(image_size // x.shape[1], image_size // x.shape[2]), interpolation="bilinear",)(x)
     model_output = layers.Conv2D(1, kernel_size=(1, 1), name="out", activation='sigmoid', dtype="float32")(x)
 
-    return keras.Model(inputs=inputs, outputs=model_output, name=get_model_name(config))
+    # Construct Base Model
+    return keras.Model(inputs=inputs, outputs=model_output, name="unet_base")
 
 
-def deeplab_input(config):
-    bands = get_bands(config)
-    patch_size = get_patch_size(config)
-    rgb_inputs = layers.Input(shape=(patch_size, patch_size, 3))
-    nir_inputs = layers.Input(shape=(patch_size, patch_size, 1))
-    swir_inputs = layers.Input(shape=(patch_size, patch_size, 1))
-    if "RGB" in bands and "NIR" in bands and "SWIR" in bands:
-        return [rgb_inputs, nir_inputs, swir_inputs], rgb_nir_swir_input_layer(rgb_inputs, nir_inputs, swir_inputs, config)
-    elif "NIR" in bands:
-        return [nir_inputs], nir_inputs
-    return [rgb_inputs], rgb_inputs
+def DeeplabV3Plus(config):
+    base_model = deeplab_base(config)
+    base_model.summary()
+    return assemble_model(base_model, config)
+
+
+def DeeplabV3PlusImageNet(config):
+    if get_input_channels(config) != 3:
+        config["hyperparameters"]["fusion_head"] = "prism"
+    base_model = deeplab_base(config, weights="imagenet")
+    base_model.summary()
+    return assemble_model(base_model, config)

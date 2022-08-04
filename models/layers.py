@@ -1,7 +1,7 @@
-from typing import  Dict, Any
+from typing import  Dict, Any, Sequence
 import tensorflow as tf
 from tensorflow.keras.activations import swish
-from tensorflow.keras.layers import Conv2D, Conv3D, DepthwiseConv2D, Layer, concatenate, Reshape, Lambda
+from tensorflow.keras.layers import Conv2D, Conv3D, DepthwiseConv2D, Layer, concatenate, Reshape, Lambda, BatchNormalization
 from backend.config import get_fusion_head
 
 
@@ -16,12 +16,14 @@ def rgb_nir_swir_input_layer(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: 
     """
     fusion_heads = {
         "naive": fusion_head_naive,
+        "prism": fusion_head_prism, 
         "depthwise": fusion_head_depthwise,
         "3D": fusion_head_3d,
         "paper": fusion_head_paper, 
         "grayscale": fusion_head_grayscale, 
     }
-    return fusion_heads[get_fusion_head(config)](rgb_inputs, nir_inputs, swir_inputs)
+    constructor = fusion_heads[get_fusion_head(config)]
+    return constructor(rgb_inputs, nir_inputs, swir_inputs) if get_fusion_head(config) != "prism" else constructor([rgb_inputs, nir_inputs, swir_inputs])
 
 
 def fusion_head_naive(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> Layer:
@@ -78,7 +80,9 @@ def fusion_head_paper(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) 
 
     concat = concatenate([rgb_conv, nir_conv, swir_conv], axis=3)
 
-    return concat
+    conv = Conv2D(64, (1, 1), strides=(1, 1), activation=None, kernel_initializer='he_uniform', padding="same")(concat)
+    bn = BatchNormalization()(conv)
+    return tf.nn.swish(bn)
 
 
 def fusion_head_grayscale(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Layer) -> Layer:
@@ -97,3 +101,13 @@ def fusion_head_grayscale(rgb_inputs: Layer, nir_inputs: Layer, swir_inputs: Lay
 
     # Return Final Layer
     return concat
+
+
+def fusion_head_prism(inputs: Sequence[Layer]) -> Layer:
+    """
+    A layer which combines the given input bands and uses a convolution to produce a 3 band output
+    :param inputs: The list of inputs we want to fuse together
+    :returns: The fusion head as a Keras layer
+    """
+    x = concatenate(inputs, axis=3) if len(inputs) > 1 else inputs[0]
+    return Conv2D(3, 1, 1, padding="same")(x)

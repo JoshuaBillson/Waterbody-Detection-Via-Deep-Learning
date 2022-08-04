@@ -1,4 +1,3 @@
-
 from typing import Dict, Any
 from tensorflow.keras.models import Model
 from keras_unet_collection.models import unet_2d
@@ -17,6 +16,23 @@ def unet_deep(config: Dict[str, Any]) -> Model:
 
     # Construct Base Model
     model = unet_2d(input_size=(config["patch_size"], config["patch_size"], input_channels), filter_num=[64, 128, 256, 512, 1024, 2048], n_labels=1, backbone=backbone, batch_norm=True)
+    model.summary()
+
+    # Replace Input And Output Layers
+    return assemble_model(model, config)
+
+
+def unet(config: Dict[str, Any]) -> Model:
+    """
+    Construct a regulard model that takes the input bands and uses the backbone specified in the config
+    :param config: The model configuration
+    :return: The assembled U-Net model
+    """
+    # Get Backbone And Input Channels
+    input_channels, backbone = get_model_config(config)
+
+    # Construct Base Model
+    model = unet_2d(input_size=(config["patch_size"], config["patch_size"], input_channels), filter_num=[64, 128, 256, 512, 1024], n_labels=1, backbone=backbone, batch_norm=True)
     model.summary()
 
     # Replace Input And Output Layers

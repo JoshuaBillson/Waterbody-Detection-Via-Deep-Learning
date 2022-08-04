@@ -13,4 +13,10 @@ old_data/
 experiments
 remove_experiment.py
 resample.py
+compare_decision_boundaries.py
+compare_models.py
+demonstrate_pct.py
+evaluate_models.py
+plot_learning_curves.py
+waterbody-data.tar.gz
 
