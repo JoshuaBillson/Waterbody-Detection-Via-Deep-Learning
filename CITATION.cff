@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Billson"
+  given-names: "JoshuaE"
+title: "Waterbody-Detection-Via-Deep-Learning"
+version: 1.0.0
+date-released: 2022-08-04
+url: "https://github.com/JoshuaBillson/Waterbody-Detection-Via-Deep-Learning"
