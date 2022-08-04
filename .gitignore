@@ -19,4 +19,5 @@ demonstrate_pct.py
 evaluate_models.py
 plot_learning_curves.py
 waterbody-data.tar.gz
+scripts/
 
