@@ -3,7 +3,7 @@
 This project explores the application of deep learning to waterbody detection.
 
 # Dataset
-https://github.com/SCoulY/Sentinel-2-Water-Segmentation
+https://drive.google.com/drive/folders/1EElPRg_6g8_QU_C5i54shXo7R11k9oLB?usp=sharing
 
 # Running The Script
 To run the script, simply execute `main.py` with the index of the GPU you want to train with specified as an optional parameter. If no GPU is specified, the script will default to GPU 0.
