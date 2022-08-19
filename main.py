@@ -8,7 +8,7 @@ from tensorflow.keras.losses import binary_crossentropy
 from tensorflow.keras import mixed_precision
 from backend.metrics import MIOU 
 from backend.pipeline import load_dataset
-from generate_patches import generate_patches
+from scripts.generate_patches import generate_patches
 from models import get_model
 from models.utils import evaluate_model
 from backend.config import get_epochs, get_model_type, get_timestamp, get_learning_rate, get_timestamp_directory, get_num_experiments, get_mixed_precision
