@@ -55,17 +55,33 @@ The script expects an external file called `config.json` in which the use should
 
 
 ### Available Hyperparameters
-| Hyperparameter   | Effects                                               |  Values                                         |
-|------------------|-------------------------------------------------------|:-----------------------------------------------:|
-| model            | The model we want to use                              | String                                          |
-| bands            | The bands used as inpiut to the model                 | List<String>                                    |
-| backbone         | The model of the pre-trained backbone we want to use  | String                                          |
-| learning_rate    | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
-| fusion_head      | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
-| loss             | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
-| batch_size       | The size of batches used in training                  | Non-Zero Positive Integer                       |
-| epochs           | The number of epochs to train for                     | Non-Zero Positive Integer                       |
-| apply_transfer   | The number of epochs to train for                     | Non-Zero Positive Integer                       |
-| random_subsample | The number of epochs to train for                     | Non-Zero Positive Integer                       |
-| water_threshold  | The number of epochs to train for                     | Non-Zero Positive Integer                       |
-  
+| Hyperparameter   | Effects                                                                           |
+|------------------|-----------------------------------------------------------------------------------|
+| model            | The model we want to use                                                          |
+| bands            | The bands used as inpiut to the model                                             |
+| backbone         | The model of the pre-trained backbone we want to use                              |
+| learning_rate    | The learning rate used by the optimizer                                           |
+| fusion_head      | The type of fusion head to use to combine spectral bands                          |
+| loss             | The loss to use during training                                                   |
+| batch_size       | The size of batches used in training                                              |
+| epochs           | The number of epochs to train for                                                 |
+| apply_transfer   | Whether or not to apply the PCT water transfer method                             |
+| random_subsample | Whether or not to randomly sample patches for training                            |
+| water_threshold  | The threshold at which to stop transplanting water bodies if apply_transfer=true  |
+
+### Citation
+Please cite our work if it is helpfull for your research.
+```
+@article{rs15051253,
+title={Water Body Extraction from Sentinel-2 Imagery with Deep Convolutional Networks and Pixelwise Category Transplantation},
+author={Billson, Joshua and Islam, MD Samiul and Sun, Xinyao and Cheng, Irene},
+journal={Remote Sensing},
+volume={15},
+year={2023},
+number={5},
+article-number={1253},
+url={https://www.mdpi.com/2072-4292/15/5/1253},
+issn={2072-4292},
+doi={10.3390/rs15051253}
+}
+```
