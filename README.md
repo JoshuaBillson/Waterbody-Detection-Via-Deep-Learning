@@ -17,31 +17,42 @@ The script expects an external file called `config.json` in which the use should
 ### Example Configuration
 ```json
 {
-  "generate_patches": false,
-  "show_data": false,
-  "show_samples": false,
   "timestamp": 1,
   "patch_size": 512,
+  "experiment_tag": "unet_multispectral",
+  "create_logs": true,
   "train": true,
+  "test": true,
+  "experiments": 1,
+  "use_mixed_precision": true,
   "hyperparameters": {
-    "model": "unet",
-    "bands": ["NIR"],
+    "model": "unet", 
+    "bands": ["RGB", "NIR", "SWIR"],
     "backbone": null,
     "learning_rate": 0.00005,
+    "fusion_head": "naive",
+    "loss": "jaccard_bce",
     "batch_size": 4,
-    "epochs": 5 }
+    "epochs": 50,
+    "apply_transfer": false,
+    "random_subsample": false, 
+    "water_threshold": 0
+  }
 }
 ```
 
 ### Available Settings
-| Setting          | Effects                                          |  Values         |
-|------------------|--------------------------------------------------|:---------------:|
-| generate_patches | Generate patches and save to disk                | Boolean         |
-| show_data        | Visualize the initial dataset                    | Boolean         |
-| show_samples     | Visualize a sample of patches                    | Boolean         |
-| timestamp        | The timestamp we want to use for the dataset     | {1, 2, 3}       |
-| patch_size       | The desired size of the generated patches        | {128, 256, 512} |
-| train            | Whether or not we want to run the training loop  | Boolean         |
+| Setting             | Effects                                                              |
+|---------------------|----------------------------------------------------------------------|
+| timestamp           | The timestamp to use (1, 2 or 3)                                     |
+| patch_size          | The desired size of the generated patches                            |
+| experiment_tag      | The human-readable tag with which to lable the experiment            |
+| create_logs         | Indicates whether or not we want to create logs for the experiment   |
+| train               | Whether or not we want to run the training loop                      |
+| test                | Whether or not we want to test the trained model on the test set     |
+| experiments         | Indicate the number of identical experiments we want to run          |
+| use_mixed_precision | Indicate the number of identical experiments we want to run          |
+
 
 ### Available Hyperparameters
 | Hyperparameter   | Effects                                               |  Values                                         |
@@ -50,20 +61,11 @@ The script expects an external file called `config.json` in which the use should
 | bands            | The bands used as inpiut to the model                 | List<String>                                    |
 | backbone         | The model of the pre-trained backbone we want to use  | String                                          |
 | learning_rate    | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
+| fusion_head      | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
+| loss             | The learning rate used by the optimizer               | Non-Zero Positive Float                         |
 | batch_size       | The size of batches used in training                  | Non-Zero Positive Integer                       |
 | epochs           | The number of epochs to train for                     | Non-Zero Positive Integer                       |
-
-### Additional Notes
-`model` Can be either the name of a base model in the set `unet`, `vnet`, `unet_plus`, `unet_3_plus`, `r2_unet`, `resunet`, `u2net`, `transunet`, `swin_unet`, `att_unet`, `fpn`, `link_net`, `psp_net` or an existing checkpointed model such as `unet.nir.none.1653771136`. In the case of the former, a new named model will be constructed and checkpointed. In the case of the latter, the saved model will be reinitialized from its saved weights.  
-
-`bands` Is a non-empty list containing any combination of the strings in the set {"RGB", "NIR", "SWIR"}.  
-
-`backbone` A string belonging to the set `VGG[16, 19]`, `ResNet[50,101,152]`, `ResNet[50,101,152]V2`, `DenseNet[121,169,201]`, `EfficientNetB[0-7]` or `null` if you don't want to use a pre-trained backbone.  
-
-
-# Model Naming Conventions
-All saved models are named following the convention `{base_model}.{bands}.{backbone}.{time}`. So a model based on U-Net++ with a trained ResNet152 backbone taking the RGB and NIR bands as input would be named `unet_plus.rgb+nir.resnet152.1653771136`.  
-
-# Logs
-Training performance is logged every epoch with both TensorBoard and CSV. If loading a previously trained model, the logs for the new epochs will be appended to the existing logs.  
+| apply_transfer   | The number of epochs to train for                     | Non-Zero Positive Integer                       |
+| random_subsample | The number of epochs to train for                     | Non-Zero Positive Integer                       |
+| water_threshold  | The number of epochs to train for                     | Non-Zero Positive Integer                       |
   
