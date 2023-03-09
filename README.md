@@ -69,8 +69,8 @@ The script expects an external file called `config.json` in which the use should
 | random_subsample | Whether or not to randomly sample patches for training                            |
 | water_threshold  | The threshold at which to stop transplanting water bodies if apply_transfer=true  |
 
-### Citation
-Please cite our work if it is helpfull for your research.
+# Citation
+Please cite our work if it is helpful for your research.
 ```
 @article{rs15051253,
 title={Water Body Extraction from Sentinel-2 Imagery with Deep Convolutional Networks and Pixelwise Category Transplantation},
